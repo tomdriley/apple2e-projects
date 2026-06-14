@@ -33,7 +33,7 @@ Normally that boot sector would be stage 1 of an OS loader (DOS 3.3,
 ProDOS). We just put the whole program there instead.
 
 In a `.dsk` (DOS-order) image, track 0 sector 0 is simply the first 256
-bytes of the file, which is why `build.ps1` can patch it with a byte copy.
+bytes of the file, which is why the Makefile can patch it with a single `dd` call.
 
 ## Key addresses
 
