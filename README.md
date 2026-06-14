@@ -7,7 +7,7 @@ make      # assemble, link, build disk image → build/hello.dsk
 make run  # build + launch in MAME
 ```
 
-See `make help` targets: `minimal`, `run-minimal`, `clean`.
+Other targets: `make minimal`, `make run-minimal`, `make clean`.
 
 ## Pipeline
 

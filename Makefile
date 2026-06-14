@@ -66,3 +66,6 @@ run-minimal: $(DSK_MIN)
 	cd "$(dir $(MAME))" && "$(MAME)" apple2e \
 		-flop1 "$(CURDIR)/$(DSK_MIN)" \
 		-skip_gameinfo
+
+clean:
+	rm -rf $(BUILDDIR)
