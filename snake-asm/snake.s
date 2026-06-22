@@ -65,7 +65,7 @@ seed      = $0E          ; PRNG state, 2 bytes ($0E/$0F)
 food_x    = $10
 food_y    = $11
 score     = $12          ; BCD score, 2 bytes ($12/$13)
-speed     = $14          ; delay outer-loop count (smaller = faster)
+step_delay = $14         ; delay outer-loop count (smaller = faster)
 grew      = $15          ; 1 if the snake ate this step
 tmp       = $16
 tmp2      = $17
@@ -86,8 +86,8 @@ COL_BORDER = $09         ; orange
 COL_SNAKE  = $0C         ; green
 COL_FOOD   = $0D         ; yellow
 
-INIT_SPEED = $60         ; starting speed (delay)
-MIN_SPEED  = $10         ; fastest the game gets
+INIT_DELAY = $60         ; starting delay (larger = slower)
+MIN_DELAY  = $10         ; fastest the game gets
 MAX_LENGTH = $F0         ; win at length 240
 
 ; Text-screen line base addresses (page 1) used here
@@ -129,8 +129,8 @@ reset_game:
         lda     #0
         sta     score
         sta     score+1
-        lda     #INIT_SPEED
-        sta     speed
+        lda     #INIT_DELAY
+        sta     step_delay
         jsr     draw_score
         print_xy ROW_HINT, hint
         jsr     place_food
@@ -227,12 +227,12 @@ game_loop:
         sta     score+1
         cld
         jsr     draw_score
-        lda     speed
-        cmp     #MIN_SPEED+1
+        lda     step_delay
+        cmp     #MIN_DELAY+1
         bcc     @nospeed
         sec
         sbc     #2
-        sta     speed
+        sta     step_delay
 @nospeed:
         jsr     place_food
 @afterfood:
@@ -512,10 +512,10 @@ clear_text:
         rts
 
 ;----------------------------------------------------------------------
-; delay - crude busy-wait; speed controls game pace
+; delay - crude busy-wait; step_delay controls game pace
 ;----------------------------------------------------------------------
 delay:
-        ldx     speed
+        ldx     step_delay
 @o:
         ldy     #0
 @i:

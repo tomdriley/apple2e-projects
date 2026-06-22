@@ -48,7 +48,7 @@ static unsigned char length;       /* current snake length                 */
 static unsigned int  seed;         /* PRNG state (16-bit LFSR)             */
 static unsigned char food_x, food_y;
 static unsigned int  score;        /* score, packed BCD (4 digits), like snake.s */
-static unsigned char speed;        /* delay outer-loop count (smaller = faster)  */
+static unsigned char step_delay;   /* delay outer-loop count (smaller = faster)  */
 static unsigned char grew;         /* 1 if the snake ate this step         */
 
 /*----------------------------------------------------------------------
@@ -77,9 +77,9 @@ static unsigned char grew;         /* 1 if the snake ate this step         */
 /*----------------------------------------------------------------------
  * Pace and win condition
  *--------------------------------------------------------------------*/
-#define INIT_SPEED  0x60        /* starting delay (larger = slower)  */
-#define MIN_SPEED   0x10        /* fastest the game gets             */
-#define SPEED_STEP  2           /* delay removed per food eaten      */
+#define INIT_DELAY  0x60        /* starting delay (larger = slower)  */
+#define MIN_DELAY   0x10        /* fastest the game gets             */
+#define DELAY_STEP  2           /* delay removed per food eaten      */
 #define MAX_LENGTH  0xF0        /* win at length 240                 */
 #define START_LENGTH 4          /* initial snake length              */
 
@@ -249,7 +249,7 @@ static void play_game(void)
     draw_border();
     init_snake();               /* sets head/tail/length/head_x/head_y/direction */
     score = 0;
-    speed = INIT_SPEED;
+    step_delay = INIT_DELAY;
     draw_score();
     print_string(ROW_HINT, HINT);
     place_food();
@@ -307,8 +307,8 @@ static void play_game(void)
             }
             increment_score();
             draw_score();
-            if (speed >= MIN_SPEED + 1) {
-                speed -= SPEED_STEP;
+            if (step_delay >= MIN_DELAY + 1) {
+                step_delay -= DELAY_STEP;
             }
             place_food();
         }
@@ -502,11 +502,11 @@ static void clear_text(void)
 }
 
 /*----------------------------------------------------------------------
- * delay - crude busy-wait; speed controls game pace
+ * delay - crude busy-wait; step_delay controls game pace
  *--------------------------------------------------------------------*/
 static void delay(void)
 {
-    unsigned char outer = speed;
+    unsigned char outer = step_delay;
     do {
         unsigned char inner = 0;
         do {
