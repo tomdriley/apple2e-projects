@@ -5,3 +5,5 @@ build/
 nvram/
 snap/
 cfg/
+
+*.pyc
