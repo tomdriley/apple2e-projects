@@ -479,13 +479,13 @@ void scr_clear_all(void)
  * whole 80x24 screen as display glyphs, so saving it to a spare RAM area and
  * restoring it later gives a clean save/restore for full-screen apps. The save
  * area sits just below the shadow buffer, in the free RAM below the C stack. */
-#define SAVE_BASE ((unsigned char *)0x6800)
+#define SAVE_BASE    ((unsigned char *)0x6800)
 #define SCREEN_CELLS ((unsigned int)SCR_COLS * SCR_ROWS)
 
 void scr_save_screen(void)
 {
-    unsigned char     *sh = shadowrow[0]; /* the shadow is contiguous from $7000 */
-    unsigned int       i;
+    unsigned char *sh = shadowrow[0]; /* the shadow is contiguous from $7000 */
+    unsigned int   i;
     for (i = 0; i < SCREEN_CELLS; ++i) {
         SAVE_BASE[i] = sh[i];
         if ((i & 7) == 0) {

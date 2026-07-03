@@ -20,9 +20,9 @@
 
 static unsigned char state;
 static unsigned int  param[MAXPARAM];
-static unsigned char nparam; /* index of the parameter currently being built */
-static unsigned char priv;   /* a private marker ('?') was seen in this CSI */
-static unsigned char app_cursor; /* DECCKM: application cursor keys enabled */
+static unsigned char nparam;       /* index of the parameter currently being built */
+static unsigned char priv;         /* a private marker ('?') was seen in this CSI */
+static unsigned char app_cursor;   /* DECCKM: application cursor keys enabled */
 static unsigned char attr_inverse; /* SGR 7: inverse video currently selected */
 static unsigned char charset_g0;   /* the charset select (ESC(x) targets G0 */
 static unsigned char g0_special;   /* G0 is DEC special graphics (line drawing) */
@@ -30,12 +30,12 @@ static unsigned char saved_col, saved_row;
 
 void vt100_init(void)
 {
-    state      = S_NORMAL;
-    saved_col  = 0;
-    saved_row  = 0;
-    app_cursor = 0;
+    state        = S_NORMAL;
+    saved_col    = 0;
+    saved_row    = 0;
+    app_cursor   = 0;
     attr_inverse = 0;
-    g0_special = 0;
+    g0_special   = 0;
 }
 
 static void reset_params(void)
@@ -227,7 +227,7 @@ static void csi_dispatch(unsigned char f)
             case 1: /* DECCKM: application cursor keys */
                 app_cursor = on;
                 break;
-            case 47:   /* alternate screen buffer */
+            case 47: /* alternate screen buffer */
             case 1047:
             case 1049:
                 if (on) {
