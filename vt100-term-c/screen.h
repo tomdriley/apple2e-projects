@@ -28,6 +28,8 @@ void          scr_delete_lines(unsigned char n); /* DL: delete lines        */
 void          scr_insert_chars(unsigned char n); /* ICH: insert blanks       */
 void          scr_delete_chars(unsigned char n); /* DCH: delete chars        */
 void          scr_erase_chars(unsigned char n);  /* ECH: erase chars          */
+void          scr_save_screen(void);    /* save screen+cursor (alt screen on) */
+void          scr_restore_screen(void); /* restore saved screen+cursor        */
 unsigned char scr_col(void);       /* current column (0-based)       */
 unsigned char scr_row(void);       /* current row (0-based)          */
 

@@ -217,8 +217,22 @@ static void csi_dispatch(unsigned char f)
     case 'l': /* reset mode / DEC private reset (ESC[?..l) */
         if (priv) {
             unsigned char on = (unsigned char)(f == 'h');
-            if (getp(0) == 1) {
-                app_cursor = on; /* DECCKM: application cursor keys */
+            switch (getp(0)) {
+            case 1: /* DECCKM: application cursor keys */
+                app_cursor = on;
+                break;
+            case 47:   /* alternate screen buffer */
+            case 1047:
+            case 1049:
+                if (on) {
+                    scr_save_screen();
+                    scr_clear_all();
+                } else {
+                    scr_restore_screen();
+                }
+                break;
+            default:
+                break;
             }
         }
         break;

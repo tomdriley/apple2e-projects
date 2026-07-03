@@ -23,6 +23,10 @@ static const unsigned rowbase[SCR_ROWS] = {
 static unsigned char cur_col;
 static unsigned char cur_row;
 
+/* Cursor saved across an alternate-screen switch (DECSET ?1049). */
+static unsigned char saved_screen_col;
+static unsigned char saved_screen_row;
+
 /* Scroll region (0-based, inclusive). LF at the bottom margin and RI at the top
  * margin scroll only these rows; DECSTBM sets them. Default: the whole screen. */
 static unsigned char scroll_top = 0;
@@ -443,6 +447,51 @@ void scr_clear_all(void)
     }
     cur_col = 0;
     cur_row = 0;
+}
+
+/* Alternate screen (DECSET ?1049/?47/?1047). The shadow buffer already holds the
+ * whole 80x24 screen as display glyphs, so saving it to a spare RAM area and
+ * restoring it later gives a clean save/restore for full-screen apps. The save
+ * area sits just below the shadow buffer, in the free RAM below the C stack. */
+#define SAVE_BASE ((unsigned char *)0x6800)
+#define SCREEN_CELLS ((unsigned int)SCR_COLS * SCR_ROWS)
+
+void scr_save_screen(void)
+{
+    unsigned char     *sh = shadowrow[0]; /* the shadow is contiguous from $7000 */
+    unsigned int       i;
+    for (i = 0; i < SCREEN_CELLS; ++i) {
+        SAVE_BASE[i] = sh[i];
+        if ((i & 7) == 0) {
+            serial_pump(); /* this 1920-byte copy is slow; keep RX drained */
+        }
+    }
+    saved_screen_col = cur_col;
+    saved_screen_row = cur_row;
+}
+
+void scr_restore_screen(void)
+{
+    unsigned char *sh = shadowrow[0];
+    unsigned int   i;
+    unsigned char  row, col;
+    for (i = 0; i < SCREEN_CELLS; ++i) {
+        sh[i] = SAVE_BASE[i];
+        if ((i & 7) == 0) {
+            serial_pump();
+        }
+    }
+    for (row = 0; row < SCR_ROWS; ++row) {
+        unsigned char *r = shadowrow[row];
+        for (col = 0; col < SCR_COLS; ++col) {
+            cell_put(col, row, r[col]);
+            if ((col & 7) == 0) {
+                serial_pump(); /* keep the ACIA drained during the full redraw */
+            }
+        }
+    }
+    cur_col = saved_screen_col;
+    cur_row = saved_screen_row;
 }
 
 unsigned char scr_col(void) { return cur_col; }
