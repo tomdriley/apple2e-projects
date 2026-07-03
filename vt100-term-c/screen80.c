@@ -28,6 +28,52 @@ static unsigned char cur_row;
 #define BLANK       0xA0           /* high-bit space = empty cell         */
 #define PERROW      40             /* bytes per row within one bank        */
 
+/* --- Shadow copy of the screen ---------------------------------------------
+ * The real text page is split across two memory banks (even columns in AUX,
+ * odd in MAIN) and is selected by the PAGE2 soft switch. An external monitor
+ * such as MAME's Lua cannot read both banks without toggling PAGE2, and doing
+ * that asynchronously races with the running terminal and corrupts the display.
+ * To make the screen observable without any bank switching, we mirror every
+ * visible glyph into a plain, linear, non-banked RAM buffer at a fixed address.
+ * The test harness reads this buffer directly: 80 bytes per row, 24 rows.
+ *
+ * It lives in the free gap above the linked image (MEMORY top is $7000) and
+ * below the C stack (bottom $7800), so nothing else ever touches it. */
+static unsigned char *const shadowrow[SCR_ROWS] = {
+    (unsigned char *)0x7000, (unsigned char *)0x7050, (unsigned char *)0x70A0,
+    (unsigned char *)0x70F0, (unsigned char *)0x7140, (unsigned char *)0x7190,
+    (unsigned char *)0x71E0, (unsigned char *)0x7230, (unsigned char *)0x7280,
+    (unsigned char *)0x72D0, (unsigned char *)0x7320, (unsigned char *)0x7370,
+    (unsigned char *)0x73C0, (unsigned char *)0x7410, (unsigned char *)0x7460,
+    (unsigned char *)0x74B0, (unsigned char *)0x7500, (unsigned char *)0x7550,
+    (unsigned char *)0x75A0, (unsigned char *)0x75F0, (unsigned char *)0x7640,
+    (unsigned char *)0x7690, (unsigned char *)0x76E0, (unsigned char *)0x7730
+};
+
+/* Fill shadow columns [from..last] of one row with blanks. */
+static void shadow_blank_from(unsigned char row, unsigned char from)
+{
+    unsigned char *r = shadowrow[row];
+    unsigned char  col;
+    for (col = from; col < SCR_COLS; ++col) {
+        r[col] = BLANK;
+    }
+}
+
+/* Shift the shadow up one row and blank the new bottom row. */
+static void shadow_scroll(void)
+{
+    unsigned char row, i;
+    for (row = 0; row < SCR_ROWS - 1; ++row) {
+        unsigned char *d = shadowrow[row];
+        unsigned char *s = shadowrow[row + 1];
+        for (i = 0; i < SCR_COLS; ++i) {
+            d[i] = s[i];
+        }
+    }
+    shadow_blank_from(SCR_ROWS - 1, 0);
+}
+
 /* Write one already-high-bit glyph to the cell at (col,row). */
 static void cell_put(unsigned char col, unsigned char row, unsigned char ch)
 {
@@ -47,6 +93,21 @@ static void row_blank_from(unsigned char row, unsigned char from)
     unsigned char col;
     for (col = from; col < SCR_COLS; ++col) {
         cell_put(col, row, BLANK);
+    }
+}
+
+/* Fill columns [0..to] of one row with blanks, in both the video page and the
+ * shadow. Used by the "erase to cursor" / "erase whole line" operations. */
+static void blank_to(unsigned char row, unsigned char to)
+{
+    unsigned char *r = shadowrow[row];
+    unsigned char  col;
+    for (col = 0; col <= to; ++col) {
+        cell_put(col, row, BLANK);
+        r[col] = BLANK;
+        if ((col & 7) == 0) {
+            serial_pump(); /* drain the ACIA so the next byte isn't overrun */
+        }
     }
 }
 
@@ -93,6 +154,8 @@ static void scroll_up(void)
         serial_pump();
     }
     row_blank_bank(SCR_ROWS - 1);
+
+    shadow_scroll();
 }
 
 void scr_init(void)
@@ -139,19 +202,49 @@ void scr_bs(void)
 
 void scr_put(char c)
 {
-    cell_put(cur_col, cur_row, (unsigned char)c | 0x80);
+    unsigned char glyph = (unsigned char)c | 0x80;
+    cell_put(cur_col, cur_row, glyph);
+    shadowrow[cur_row][cur_col] = glyph;
     if (++cur_col >= SCR_COLS) {
         cur_col = 0;
         scr_lf();
     }
 }
 
-void scr_clear_eol(void) { row_blank_from(cur_row, cur_col); }
+void scr_clear_eol(void)
+{
+    row_blank_from(cur_row, cur_col);
+    shadow_blank_from(cur_row, cur_col);
+}
+
+void scr_clear_bol(void) { blank_to(cur_row, cur_col); }
+
+void scr_clear_line(void) { blank_to(cur_row, SCR_COLS - 1); }
+
+void scr_clear_bop(void)
+{
+    unsigned char row;
+    BANK_AUX();
+    for (row = 0; row < cur_row; ++row) {
+        row_blank_bank(row);
+        serial_pump();
+    }
+    BANK_MAIN();
+    for (row = 0; row < cur_row; ++row) {
+        row_blank_bank(row);
+        serial_pump();
+    }
+    for (row = 0; row < cur_row; ++row) {
+        shadow_blank_from(row, 0);
+    }
+    blank_to(cur_row, cur_col); /* partial current row: start..cursor */
+}
 
 void scr_clear_eop(void)
 {
     unsigned char row;
     row_blank_from(cur_row, cur_col); /* partial current row */
+    shadow_blank_from(cur_row, cur_col);
     BANK_AUX();
     for (row = cur_row + 1; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
@@ -161,6 +254,9 @@ void scr_clear_eop(void)
     for (row = cur_row + 1; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
         serial_pump();
+    }
+    for (row = cur_row + 1; row < SCR_ROWS; ++row) {
+        shadow_blank_from(row, 0);
     }
 }
 
@@ -176,6 +272,9 @@ void scr_clear_all(void)
     for (row = 0; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
         serial_pump();
+    }
+    for (row = 0; row < SCR_ROWS; ++row) {
+        shadow_blank_from(row, 0);
     }
     cur_col = 0;
     cur_row = 0;

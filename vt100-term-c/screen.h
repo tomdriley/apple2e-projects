@@ -16,7 +16,10 @@ void          scr_cr(void);        /* cursor to column 0 (same row)  */
 void          scr_lf(void);        /* cursor down, scroll at bottom  */
 void          scr_bs(void);        /* cursor left (no erase)         */
 void          scr_clear_eol(void); /* erase cursor..end of line      */
+void          scr_clear_bol(void); /* erase start of line..cursor    */
+void          scr_clear_line(void);/* erase the whole current line   */
 void          scr_clear_eop(void); /* erase cursor..end of screen    */
+void          scr_clear_bop(void); /* erase start of screen..cursor  */
 void          scr_clear_all(void); /* erase everything, home cursor  */
 unsigned char scr_col(void);       /* current column (0-based)       */
 unsigned char scr_row(void);       /* current row (0-based)          */

@@ -132,15 +132,25 @@ static void csi_dispatch(unsigned char f)
         scr_gotoxy((unsigned char)(cc - 1), (unsigned char)(rr - 1));
         break;
     }
-    case 'J': /* erase in display: 2 = all, else to end of page */
-        if (getp(0) == 2) {
+    case 'J': /* erase in display: 0 = to end, 1 = to cursor, 2 = all */
+        n = getp(0);
+        if (n == 1) {
+            scr_clear_bop();
+        } else if (n == 2) {
             scr_clear_all();
         } else {
             scr_clear_eop();
         }
         break;
-    case 'K': /* erase to end of line */
-        scr_clear_eol();
+    case 'K': /* erase in line: 0 = to end, 1 = to cursor, 2 = whole line */
+        n = getp(0);
+        if (n == 1) {
+            scr_clear_bol();
+        } else if (n == 2) {
+            scr_clear_line();
+        } else {
+            scr_clear_eol();
+        }
         break;
     case 'n': /* device status report */
         n = getp(0);

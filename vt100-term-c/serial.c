@@ -61,7 +61,14 @@ void serial_init(void)
 void serial_put(char c)
 {
     while ((acia[1] & ST_TDRE) == 0) {
-        /* wait for the transmit register to drain */
+        /* While the transmitter drains, keep pulling any received byte into the
+         * ring. A reply like the ESC[?1;0c device-attributes answer is several
+         * bytes; without this the host's next bytes would overrun the 6551's
+         * one-byte receive register while we sit here waiting to transmit. */
+        if ((acia[1] & ST_RDRF) != 0 && r_count != RING_SIZE) {
+            ring[r_head++] = acia[0];
+            ++r_count;
+        }
     }
     acia[0] = (unsigned char)c;
 }
