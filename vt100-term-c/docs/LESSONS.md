@@ -39,6 +39,13 @@ about a millisecond, and two things kept violating that:
 The lesson: **any** code path that can hold the CPU for a byte time must keep the
 receiver drained. Both fixes are just that, in different places.
 
+A third instance showed up later under sustained scrolling: blanking the new
+bottom row of the shadow buffer after each scroll is a ~0.9 ms loop, and the byte
+that arrived during it was lost — so the last lines of a fast `seq 1 30` into a
+scroll region went missing. The fix was the same: pump inside that loop too. The
+rule that emerged is simply **no memory loop over more than ~40 bytes without a
+`serial_pump()`**. A region-scroll status-bar test is what exposed it.
+
 ## Memory-mapped I/O must be `volatile`
 
 An early version cached the 6551 status register because the pointer wasn't
