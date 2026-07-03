@@ -21,8 +21,11 @@ that bridge into MAME and asserts what actually renders on the 80×24 screen.
 | Vertical motion | IND, RI (reverse index), NEL, with a settable scroll region (DECSTBM) |
 | Erase | ED 0/1/2, EL 0/1/2 |
 | Editing | IL, DL, ICH, DCH, ECH |
+| Attributes | SGR inverse video (colors/bold consumed) |
+| Alt screen | Alternate screen buffer (`?1049`/`?47`/`?1047`) for full-screen apps |
+| Charset | DEC line-drawing (`ESC(0`/`ESC(B`), mapped to ASCII box characters |
 | Reports | DSR cursor-position report (ESC[6n), Device Attributes (ESC[c) |
-| Modes | Application cursor keys (DECCKM, ESC[?1h/l) |
+| Modes / reset | Application cursor keys (DECCKM), RIS (`ESC c`), DECSTR soft reset |
 | Keyboard | Full ASCII; arrow keys → ESC[A..D (or ESC O A..D in application mode) |
 | Flow control | XON/XOFF plus RX draining during transmit and slow screen operations |
 | Serial | 9600 8N1, Super Serial Card slot auto-detection |

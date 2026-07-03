@@ -55,13 +55,21 @@ The terminal applies XON/XOFF (see [docs/SERIAL.md](SERIAL.md)); on the host sid
 set `stty ixon` so bursts pause when the Apple falls behind. For real hardware,
 also make sure your adapter and the card agree on 9600 8N1.
 
-## terminfo (planned)
+## terminfo
 
-With `TERM=vt100` the shell already emits sequences this terminal handles. A
-tighter fit is a custom `apple2e-vt` terminfo entry that advertises exactly the
-capabilities implemented here; `tic`-install it in WSL and export
-`TERM=apple2e-vt`. ncurses then emits only what the terminal supports, bounding
-the surface area. This entry is not yet included.
+With `TERM=vt100` the shell already emits sequences this terminal handles. For a
+tighter fit, [client/apple2e-vt.terminfo](../client/apple2e-vt.terminfo)
+describes exactly the capabilities implemented here, so ncurses emits only what
+the terminal supports. Install it in WSL and select it:
+
+```sh
+tic -x apple2e-vt.terminfo      # in WSL, installs to ~/.terminfo
+export TERM=apple2e-vt          # in the shell that runs under the bridge
+```
+
+It advertises the cursor, erase, scroll-region, insert/delete, inverse-video,
+alternate-screen, application-cursor-key, and line-drawing capabilities the
+firmware provides — and nothing it does not.
 
 ## Real hardware
 

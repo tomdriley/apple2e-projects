@@ -49,6 +49,8 @@ to distinguish, e.g., DECSTBM (`ESC[r`) from private resets (`ESC[?..r`).
 | `ESC D` | IND | Index: cursor down, scroll at the bottom margin |
 | `ESC M` | RI | Reverse index: cursor up, scroll **down** at the top margin |
 | `ESC E` | NEL | Next line: CR + LF |
+| `ESC c` | RIS | Hard reset: clear, home, default attributes/charset/modes/region |
+| `ESC ( 0` / `ESC ( B` | SCS | Select DEC line-drawing / ASCII for G0 |
 
 ### CSI — cursor motion
 
@@ -89,13 +91,30 @@ operate within the cursor's row.
 | `ESC [ 5 n` | DSR | Sends `ESC [ 0 n` (terminal OK) |
 | `ESC [ c` | DA | Sends `ESC [ ? 1 ; 0 c` (identify as a VT100) |
 | `ESC [ ? 1 h` / `l` | DECCKM | Enable / disable application cursor keys |
+| `ESC [ ? 47/1047/1049 h` / `l` | Alt screen | Switch to / from the alternate screen buffer (save + restore) |
+| `ESC [ ! p` | DECSTR | Soft reset: attributes, charset, modes, region (no clear) |
+| `ESC [ Ps m` | SGR | `7` = inverse video on, `0`/`27` = off; colors and bold consumed |
 
 ### Consumed and ignored
 
-SGR (`ESC [ Ps m`, colors and attributes) and any unrecognized final byte are
-parsed and discarded. This keeps `ls --color`, prompts with color, and other
+Inverse video (`SGR 7`) is rendered using the IIe's inverse character codes; the
+shadow buffer stores the display glyph so inverse survives scrolling, insert/
+delete, and the alternate-screen save/restore. Because the non-enhanced apple2e
+character set has no inverse lower case, inverse lower-case text shows as inverse
+**upper** case.
+
+Colors, bold, and any other SGR attributes are parsed and discarded, as is any
+unrecognized final byte. This keeps `ls --color`, colored prompts, and other
 styled output readable rather than littering the screen with escape residue.
-Private mode sets/resets other than DECCKM are likewise absorbed.
+Private mode sets/resets other than the ones listed above are likewise absorbed.
+
+## Character sets and line drawing
+
+`ESC ( 0` selects the DEC special-graphics (line-drawing) set for G0; `ESC ( B`
+returns to ASCII. While line drawing is active, the box-drawing codes are mapped
+to the closest ASCII the IIe can show — horizontal `q`→`-`, vertical `x`→`|`, and
+all corners/tees/cross→`+` — because real box glyphs would need MouseText, which
+the non-enhanced apple2e lacks.
 
 ## Keyboard map
 
