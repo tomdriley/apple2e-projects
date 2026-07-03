@@ -130,6 +130,64 @@ def run_cursor_tests(conn):
     return fails
 
 
+class SerialConn:
+    """Adapt a pyserial port to the tiny socket-like interface the cursor tests
+    use (settimeout / sendall / recv), so they can run against a real Apple IIe
+    over the Super Serial Card instead of MAME."""
+
+    def __init__(self, device, baud):
+        import serial
+        self.ser = serial.Serial(device, baud, timeout=0.2)
+
+    def settimeout(self, t):
+        self.ser.timeout = t
+
+    def sendall(self, data):
+        self.ser.write(data)
+
+    def recv(self, n):
+        d = self.ser.read(n)
+        if not d:
+            raise socket.timeout()  # match the socket's "no data" behaviour
+        return d
+
+    def close(self):
+        try:
+            self.ser.close()
+        except Exception:
+            pass
+
+
+def autodetect_port():
+    from serial.tools import list_ports
+    ports = [p for p in list_ports.comports() if getattr(p, "vid", None)]
+    ports = ports or list(list_ports.comports())
+    if not ports:
+        sys.exit("No serial ports found - is the USB/RS-232 adapter plugged in?")
+    return ports[0].device
+
+
+def run_serial(args):
+    """Real-hardware verification: run the DSR cursor tests over a serial port."""
+    if args.keys:
+        print("--keys uses MAME key injection and cannot run over serial.")
+        return 2
+    device = args.device or autodetect_port()
+    print(f"[serial {device} @ {args.baud} 8N1]")
+    print("[boot the vt100 disk on the Apple; waiting for the terminal ...]")
+    conn = SerialConn(device, args.baud)
+    try:
+        if not wait_ready(conn):
+            print("FAIL: no cursor report. Check the cable (TX<->RX crossed), the "
+                  "baud rate, and that the terminal booted on the Apple.")
+            return 1
+        print("[terminal is responding -- running cursor tests]\n")
+        fails = run_cursor_tests(conn)
+    finally:
+        conn.close()
+    return 1 if fails else 0
+
+
 # What the Apple should transmit for the injected keys: letter, Enter (CR), then
 # the four arrows as ANSI cursor sequences. In application-cursor-keys mode
 # (DECCKM, ESC[?1h) the arrows switch from ESC [ x to ESC O x.
@@ -172,7 +230,14 @@ def main():
     ap.add_argument("--keys", action="store_true", help="run keyboard-input tests")
     ap.add_argument("--app", action="store_true",
                     help="with --keys: test application cursor keys (DECCKM)")
+    ap.add_argument("--serial", action="store_true",
+                    help="run the cursor tests against real hardware over a serial port")
+    ap.add_argument("--device", help="serial port for --serial (auto-detected if omitted)")
+    ap.add_argument("--baud", type=int, default=9600, help="serial baud for --serial")
     args = ap.parse_args()
+
+    if args.serial:
+        return run_serial(args)
 
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

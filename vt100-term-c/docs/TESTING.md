@@ -107,6 +107,22 @@ saga behind those two decisions.
   `-nothrottle` races through the emulated seconds of `-str` and would quit in the
   middle of the suite. The harness terminates MAME itself when done.
 
+## Real-hardware verification
+
+The DSR cursor tests also run against a physical Apple IIe over the Super Serial
+Card — no MAME, no bash. Boot the `vt100.dsk` disk on the Apple, wire a USB/RS-232
+adapter to the card, then:
+
+```sh
+python client/vt100_test.py --serial            # auto-detect the port
+python client/vt100_test.py --serial --device COM3 --baud 9600
+```
+
+It handshakes with the terminal (`ESC[6n`), then runs the full cursor suite and
+reports pass/fail exactly like the MAME run. `--keys` cannot run this way (it
+relies on MAME key injection); verify the keyboard by typing on the Apple with
+the interactive bridge (see [docs/BRIDGE.md](BRIDGE.md)).
+
 ## Adding a test
 
 **A cursor/keyboard behavior** → add a tuple to `CURSOR_TESTS` in
