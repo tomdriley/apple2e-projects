@@ -16,7 +16,15 @@ local function snapshot()
         local base = SHADOW + r * 80
         local s = {}
         for c = 0, 79 do
-            local b = mem:read_u8(base + c) & 0x7f
+            local raw = mem:read_u8(base + c)
+            local b
+            if raw >= 0x80 then
+                b = raw & 0x7f           -- normal high-bit ASCII
+            elseif raw < 0x20 then
+                b = raw + 0x40           -- inverse upper case ($00-$1F -> @A-Z...)
+            else
+                b = raw                  -- inverse space/digit/symbol ($20-$3F)
+            end
             if b < 0x20 or b == 0x7f then b = 0x20 end
             s[#s + 1] = string.char(b)
         end

@@ -65,6 +65,8 @@ SHELL_TESTS = [
      [("row", 1, "Q" * 80), ("row", 2, "Q" * 10)]),
     ("sgr",       r"printf '\033[7mINVERSE\033[0m TEXT\r\n'",
      [("has", "INVERSE"), ("has", "TEXT")]),
+    ("sgr_row",   r"printf '\033[12;1HNORMAL \033[7mHILITE\033[0m DONE\r\n'",
+     [("row", 12, "NORMAL HILITE DONE")]),
     ("el_bol",    r"printf '\033[3;1HABCDEFGHIJ\033[3;5H\033[1KX\r\n'",
      [("row", 3, "XFGHIJ"), ("absent", "ABCDE")]),
     ("el_line",   r"printf '\033[4;1HZZZZZZ\033[4;3H\033[2KQ\r\n'",

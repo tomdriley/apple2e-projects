@@ -22,6 +22,7 @@ static unsigned int  param[MAXPARAM];
 static unsigned char nparam; /* index of the parameter currently being built */
 static unsigned char priv;   /* a private marker ('?') was seen in this CSI */
 static unsigned char app_cursor; /* DECCKM: application cursor keys enabled */
+static unsigned char attr_inverse; /* SGR 7: inverse video currently selected */
 static unsigned char saved_col, saved_row;
 
 void vt100_init(void)
@@ -30,6 +31,7 @@ void vt100_init(void)
     saved_col  = 0;
     saved_row  = 0;
     app_cursor = 0;
+    attr_inverse = 0;
 }
 
 static void reset_params(void)
@@ -239,6 +241,19 @@ static void csi_dispatch(unsigned char f)
     case 'u': /* restore cursor */
         scr_gotoxy(saved_col, saved_row);
         break;
+    case 'm': { /* SGR: we render inverse video; other attributes are ignored */
+        unsigned char k;
+        for (k = 0; k <= nparam; ++k) {
+            unsigned int p = getp(k);
+            if (p == 0 || p == 27) {
+                attr_inverse = 0; /* reset / inverse off */
+            } else if (p == 7) {
+                attr_inverse = 1; /* inverse on */
+            }
+        }
+        scr_set_attr(attr_inverse);
+        break;
+    }
     case 'r': /* DECSTBM: set top/bottom scroll margins (not the private ?..r) */
         if (priv == 0) {
             unsigned int top = getp(0);
@@ -270,7 +285,7 @@ static void csi_dispatch(unsigned char f)
         n = getp(0);
         scr_erase_chars((unsigned char)(n ? n : 1));
         break;
-    default: /* SGR ('m') and anything unrecognized: ignore */
+    default: /* colors/bold and any unrecognized final byte: ignore */
         break;
     }
 }

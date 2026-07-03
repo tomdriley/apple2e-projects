@@ -32,6 +32,9 @@ static unsigned char saved_screen_row;
 static unsigned char scroll_top = 0;
 static unsigned char scroll_bot = SCR_ROWS - 1;
 
+/* Current character attribute: 0 = normal, 1 = inverse (SGR 7). */
+static unsigned char cur_attr;
+
 #define BANK_AUX()  (TXTPAGE2 = 0) /* PAGE2 on : CPU sees AUX $0400-$07FF */
 #define BANK_MAIN() (TXTPAGE1 = 0) /* PAGE2 off: CPU sees MAIN            */
 #define BLANK       0xA0           /* high-bit space = empty cell         */
@@ -218,6 +221,7 @@ void scr_init(void)
     TXTPAGE1   = 0; /* display page 1 / main bank for the CPU    */
     scroll_top = 0;
     scroll_bot = SCR_ROWS - 1;
+    cur_attr   = 0;
     scr_clear_all();
 }
 
@@ -371,7 +375,17 @@ void scr_bs(void)
 
 void scr_put(char c)
 {
-    unsigned char glyph = (unsigned char)c | 0x80;
+    unsigned char u = (unsigned char)c & 0x7F;
+    unsigned char glyph;
+    if (cur_attr) {
+        /* Inverse video uses display codes $00-$3F. $40-$7F map to inverse
+         * upper case ($00-$1F); $20-$3F (space, digits, symbols) stay put.
+         * (Lower case therefore shows as inverse upper case on the non-enhanced
+         * IIe character set, which lacks inverse lower case.) */
+        glyph = (u >= 0x40) ? (unsigned char)(u & 0x1F) : u;
+    } else {
+        glyph = (unsigned char)(u | 0x80); /* normal high-bit ASCII */
+    }
     cell_put(cur_col, cur_row, glyph);
     shadowrow[cur_row][cur_col] = glyph;
     if (++cur_col >= SCR_COLS) {
@@ -379,6 +393,9 @@ void scr_put(char c)
         scr_lf();
     }
 }
+
+/* SGR attribute select: nonzero = inverse video, zero = normal. */
+void scr_set_attr(unsigned char inverse) { cur_attr = inverse; }
 
 void scr_clear_eol(void)
 {
