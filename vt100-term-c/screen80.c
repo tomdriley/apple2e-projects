@@ -69,6 +69,9 @@ static void shadow_blank_from(unsigned char row, unsigned char from)
     unsigned char  col;
     for (col = from; col < SCR_COLS; ++col) {
         r[col] = BLANK;
+        if ((col & 15) == 0) {
+            serial_pump(); /* blanking a full row is ~0.9ms; keep RX drained */
+        }
     }
 }
 
