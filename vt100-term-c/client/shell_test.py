@@ -75,6 +75,8 @@ SHELL_TESTS = [
      [("row", 3, "LINE-TWO"), ("row", 1, "")]),
     ("ind_scroll", r"printf '\033[23;1HNEARBOT\033[24;1H\033D'",
      [("row", 22, "NEARBOT")]),
+    ("region_scroll", r"printf '\033[3;5r\033[3;1HRR3\033[4;1HRR4\033[5;1HRR5\033[5;1H\n\033[r'",
+     [("row", 3, "RR4"), ("row", 5, "")]),
     ("clear",     "clear; echo AFTER-CLEAR",
      [("has", "AFTER-CLEAR"), ("absent", "READY-XYZ")]),
 ]
@@ -188,7 +190,8 @@ class Terminal:
             pass
 
     def clear(self):
-        self.send(b"\x1b[2J\x1b[H")
+        # ESC[r resets the scroll region so it can't leak between cases.
+        self.send(b"\x1b[r\x1b[2J\x1b[H")
 
     def close(self):
         self.stop.set()

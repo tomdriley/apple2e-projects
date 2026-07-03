@@ -20,6 +20,7 @@
 static unsigned char state;
 static unsigned int  param[MAXPARAM];
 static unsigned char nparam; /* index of the parameter currently being built */
+static unsigned char priv;   /* a private marker ('?') was seen in this CSI */
 static unsigned char saved_col, saved_row;
 
 void vt100_init(void)
@@ -36,6 +37,7 @@ static void reset_params(void)
         param[i] = 0;
     }
     nparam = 0;
+    priv   = 0;
 }
 
 static unsigned int getp(unsigned char i)
@@ -212,6 +214,17 @@ static void csi_dispatch(unsigned char f)
     case 'u': /* restore cursor */
         scr_gotoxy(saved_col, saved_row);
         break;
+    case 'r': /* DECSTBM: set top/bottom scroll margins (not the private ?..r) */
+        if (priv == 0) {
+            unsigned int top = getp(0);
+            unsigned int bot = getp(1);
+            if (top == 0)
+                top = 1;
+            if (bot == 0)
+                bot = SCR_ROWS;
+            scr_set_region((unsigned char)(top - 1), (unsigned char)(bot - 1));
+        }
+        break;
     default: /* SGR ('m') and anything unrecognized: ignore */
         break;
     }
@@ -273,11 +286,13 @@ void vt100_feed(char ch)
             if (nparam < MAXPARAM - 1) {
                 ++nparam;
             }
+        } else if (c == '?') {
+            priv = 1; /* private-mode marker (e.g. ESC[?25h) */
         } else if (c >= 0x40 && c <= 0x7E) {
             csi_dispatch(c); /* a final byte: act and return to normal */
             state = S_NORMAL;
         }
-        /* else: private/intermediate byte (e.g. '?') -> consume, stay in CSI */
+        /* else: an intermediate byte -> consume, stay in CSI */
         break;
     }
 }

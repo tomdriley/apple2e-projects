@@ -23,6 +23,11 @@ static const unsigned rowbase[SCR_ROWS] = {
 static unsigned char cur_col;
 static unsigned char cur_row;
 
+/* Scroll region (0-based, inclusive). LF at the bottom margin and RI at the top
+ * margin scroll only these rows; DECSTBM sets them. Default: the whole screen. */
+static unsigned char scroll_top = 0;
+static unsigned char scroll_bot = SCR_ROWS - 1;
+
 #define BANK_AUX()  (TXTPAGE2 = 0) /* PAGE2 on : CPU sees AUX $0400-$07FF */
 #define BANK_MAIN() (TXTPAGE1 = 0) /* PAGE2 off: CPU sees MAIN            */
 #define BLANK       0xA0           /* high-bit space = empty cell         */
@@ -60,32 +65,32 @@ static void shadow_blank_from(unsigned char row, unsigned char from)
     }
 }
 
-/* Shift the shadow up one row and blank the new bottom row. */
+/* Shift the shadow up one row within the scroll region; blank the bottom row. */
 static void shadow_scroll(void)
 {
     unsigned char row, i;
-    for (row = 0; row < SCR_ROWS - 1; ++row) {
+    for (row = scroll_top; row < scroll_bot; ++row) {
         unsigned char *d = shadowrow[row];
         unsigned char *s = shadowrow[row + 1];
         for (i = 0; i < SCR_COLS; ++i) {
             d[i] = s[i];
         }
     }
-    shadow_blank_from(SCR_ROWS - 1, 0);
+    shadow_blank_from(scroll_bot, 0);
 }
 
-/* Shift the shadow down one row and blank the new top row. */
+/* Shift the shadow down one row within the scroll region; blank the top row. */
 static void shadow_scroll_down(void)
 {
     unsigned char row, i;
-    for (row = SCR_ROWS - 1; row != 0; --row) {
+    for (row = scroll_bot; row != scroll_top; --row) {
         unsigned char *d = shadowrow[row];
         unsigned char *s = shadowrow[row - 1];
         for (i = 0; i < SCR_COLS; ++i) {
             d[i] = s[i];
         }
     }
-    shadow_blank_from(0, 0);
+    shadow_blank_from(scroll_top, 0);
 }
 
 /* Write one already-high-bit glyph to the cell at (col,row). */
@@ -155,19 +160,19 @@ static void scroll_up(void)
 {
     unsigned char row;
 
-    BANK_AUX(); /* shift every row up one, once per bank */
-    for (row = 0; row < SCR_ROWS - 1; ++row) {
+    BANK_AUX(); /* shift the region up one, once per bank */
+    for (row = scroll_top; row < scroll_bot; ++row) {
         row_copy(row, row + 1);
         serial_pump(); /* keep the ACIA drained while we work */
     }
-    row_blank_bank(SCR_ROWS - 1);
+    row_blank_bank(scroll_bot);
 
     BANK_MAIN();
-    for (row = 0; row < SCR_ROWS - 1; ++row) {
+    for (row = scroll_top; row < scroll_bot; ++row) {
         row_copy(row, row + 1);
         serial_pump();
     }
-    row_blank_bank(SCR_ROWS - 1);
+    row_blank_bank(scroll_bot);
 
     shadow_scroll();
 }
@@ -176,19 +181,19 @@ static void scroll_down(void)
 {
     unsigned char row;
 
-    BANK_AUX(); /* shift every row down one, once per bank */
-    for (row = SCR_ROWS - 1; row != 0; --row) {
+    BANK_AUX(); /* shift the region down one, once per bank */
+    for (row = scroll_bot; row != scroll_top; --row) {
         row_copy(row, row - 1);
         serial_pump();
     }
-    row_blank_bank(0);
+    row_blank_bank(scroll_top);
 
     BANK_MAIN();
-    for (row = SCR_ROWS - 1; row != 0; --row) {
+    for (row = scroll_bot; row != scroll_top; --row) {
         row_copy(row, row - 1);
         serial_pump();
     }
-    row_blank_bank(0);
+    row_blank_bank(scroll_top);
 
     shadow_scroll_down();
 }
@@ -201,6 +206,8 @@ void scr_init(void)
     TXTSET     = 0; /* text mode                                 */
     MIXCLR     = 0; /* full screen (no mixed graphics)           */
     TXTPAGE1   = 0; /* display page 1 / main bank for the CPU    */
+    scroll_top = 0;
+    scroll_bot = SCR_ROWS - 1;
     scr_clear_all();
 }
 
@@ -220,21 +227,37 @@ void scr_cr(void) { cur_col = 0; }
 
 void scr_lf(void)
 {
-    if (cur_row >= SCR_ROWS - 1) {
-        scroll_up();
-        cur_row = SCR_ROWS - 1;
-    } else {
+    if (cur_row == scroll_bot) {
+        scroll_up(); /* at the bottom margin: scroll, cursor stays */
+    } else if (cur_row < SCR_ROWS - 1) {
         ++cur_row;
     }
 }
 
-void scr_ri(void) /* reverse index: up one row, scrolling down at the top */
+void scr_ri(void) /* reverse index: up one row, scrolling down at the top margin */
 {
-    if (cur_row == 0) {
+    if (cur_row == scroll_top) {
         scroll_down();
-    } else {
+    } else if (cur_row != 0) {
         --cur_row;
     }
+}
+
+/* DECSTBM: set the scroll region to rows [top..bot] (0-based, inclusive) and
+ * home the cursor. An empty/invalid region resets to the whole screen. */
+void scr_set_region(unsigned char top, unsigned char bot)
+{
+    if (bot >= SCR_ROWS) {
+        bot = SCR_ROWS - 1;
+    }
+    if (top >= bot) {
+        top = 0;
+        bot = SCR_ROWS - 1;
+    }
+    scroll_top = top;
+    scroll_bot = bot;
+    cur_col    = 0;
+    cur_row    = 0;
 }
 
 void scr_bs(void)

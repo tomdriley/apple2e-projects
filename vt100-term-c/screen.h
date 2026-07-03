@@ -22,6 +22,7 @@ void          scr_clear_line(void);/* erase the whole current line   */
 void          scr_clear_eop(void); /* erase cursor..end of screen    */
 void          scr_clear_bop(void); /* erase start of screen..cursor  */
 void          scr_clear_all(void); /* erase everything, home cursor  */
+void          scr_set_region(unsigned char top, unsigned char bot); /* DECSTBM */
 unsigned char scr_col(void);       /* current column (0-based)       */
 unsigned char scr_row(void);       /* current row (0-based)          */
 
