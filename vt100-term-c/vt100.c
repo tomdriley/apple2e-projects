@@ -12,10 +12,11 @@
 #include "screen.h"
 #include "serial.h"
 
-#define S_NORMAL 0
-#define S_ESC    1
-#define S_CSI    2
-#define MAXPARAM 4
+#define S_NORMAL  0
+#define S_ESC     1
+#define S_CSI     2
+#define S_CHARSET 3
+#define MAXPARAM  4
 
 static unsigned char state;
 static unsigned int  param[MAXPARAM];
@@ -23,6 +24,8 @@ static unsigned char nparam; /* index of the parameter currently being built */
 static unsigned char priv;   /* a private marker ('?') was seen in this CSI */
 static unsigned char app_cursor; /* DECCKM: application cursor keys enabled */
 static unsigned char attr_inverse; /* SGR 7: inverse video currently selected */
+static unsigned char charset_g0;   /* the charset select (ESC(x) targets G0 */
+static unsigned char g0_special;   /* G0 is DEC special graphics (line drawing) */
 static unsigned char saved_col, saved_row;
 
 void vt100_init(void)
@@ -32,6 +35,7 @@ void vt100_init(void)
     saved_row  = 0;
     app_cursor = 0;
     attr_inverse = 0;
+    g0_special = 0;
 }
 
 static void reset_params(void)
@@ -292,6 +296,31 @@ static void csi_dispatch(unsigned char f)
 
 unsigned char vt100_app_cursor(void) { return app_cursor; }
 
+/* Map DEC special-graphics (line-drawing) codes to the closest ASCII the IIe's
+ * character set can show. Real box-drawing glyphs would need MouseText, which the
+ * non-enhanced apple2e lacks, so corners/tees/cross collapse to '+'. */
+static char dec_graphic(unsigned char c)
+{
+    switch (c) {
+    case 'q':
+        return '-'; /* horizontal line */
+    case 'x':
+        return '|'; /* vertical line */
+    case 'j':
+    case 'k':
+    case 'l':
+    case 'm':
+    case 'n':
+    case 't':
+    case 'u':
+    case 'v':
+    case 'w':
+        return '+'; /* corners, tees, cross */
+    default:
+        return (char)c;
+    }
+}
+
 void vt100_feed(char ch)
 {
     unsigned char c = (unsigned char)ch & 0x7F;
@@ -314,7 +343,7 @@ void vt100_feed(char ch)
         } else if (c == 0x07) {
             beep();
         } else if (c >= 0x20 && c < 0x7F) {
-            scr_put((char)c);
+            scr_put(g0_special ? dec_graphic(c) : (char)c);
         }
         break;
 
@@ -322,6 +351,9 @@ void vt100_feed(char ch)
         if (c == '[') {
             reset_params();
             state = S_CSI;
+        } else if (c == '(' || c == ')') {
+            charset_g0 = (unsigned char)(c == '('); /* which G-set to designate */
+            state      = S_CHARSET;
         } else {
             switch (c) {
             case 'D': /* IND: index -- down one line, scroll at bottom */
@@ -339,6 +371,17 @@ void vt100_feed(char ch)
             }
             state = S_NORMAL;
         }
+        break;
+
+    case S_CHARSET: /* the byte after ESC( or ESC): 0 = line drawing, B = ASCII */
+        if (charset_g0) {
+            if (c == '0') {
+                g0_special = 1;
+            } else if (c == 'B') {
+                g0_special = 0;
+            }
+        }
+        state = S_NORMAL;
         break;
 
     case S_CSI:
