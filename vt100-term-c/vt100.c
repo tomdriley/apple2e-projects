@@ -132,6 +132,39 @@ static void csi_dispatch(unsigned char f)
         scr_gotoxy((unsigned char)(cc - 1), (unsigned char)(rr - 1));
         break;
     }
+    case 'G': /* CHA: cursor to absolute column (row unchanged) */
+    case '`': /* HPA: horizontal position absolute (same as CHA) */
+        n = getp(0);
+        if (n == 0)
+            n = 1;
+        if (n > SCR_COLS)
+            n = SCR_COLS;
+        scr_gotoxy((unsigned char)(n - 1), row);
+        break;
+    case 'd': /* VPA: cursor to absolute row (column unchanged) */
+        n = getp(0);
+        if (n == 0)
+            n = 1;
+        if (n > SCR_ROWS)
+            n = SCR_ROWS;
+        scr_gotoxy(col, (unsigned char)(n - 1));
+        break;
+    case 'E': /* CNL: cursor to start of line n rows down */
+        n = getp(0);
+        if (n == 0)
+            n = 1;
+        n = row + n;
+        if (n >= SCR_ROWS)
+            n = SCR_ROWS - 1;
+        scr_gotoxy(0, (unsigned char)n);
+        break;
+    case 'F': /* CPL: cursor to start of line n rows up */
+        n = getp(0);
+        if (n == 0)
+            n = 1;
+        row = (n > row) ? 0 : (unsigned char)(row - n);
+        scr_gotoxy(0, row);
+        break;
     case 'J': /* erase in display: 0 = to end, 1 = to cursor, 2 = all */
         n = getp(0);
         if (n == 1) {
@@ -215,7 +248,21 @@ void vt100_feed(char ch)
             reset_params();
             state = S_CSI;
         } else {
-            state = S_NORMAL; /* ignore non-CSI escape sequences */
+            switch (c) {
+            case 'D': /* IND: index -- down one line, scroll at bottom */
+                scr_lf();
+                break;
+            case 'M': /* RI: reverse index -- up one line, scroll at top */
+                scr_ri();
+                break;
+            case 'E': /* NEL: next line -- CR + LF */
+                scr_cr();
+                scr_lf();
+                break;
+            default: /* ignore other two-byte escape sequences */
+                break;
+            }
+            state = S_NORMAL;
         }
         break;
 

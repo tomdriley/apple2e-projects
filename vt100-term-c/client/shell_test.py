@@ -71,6 +71,10 @@ SHELL_TESTS = [
      [("row", 4, "Q"), ("absent", "ZZZ")]),
     ("ed_bop",    r"printf '\033[2;1HTOPLINE\033[5;1HMIDLINE\033[6;3H\033[1J\r\n'",
      [("absent", "TOPLINE"), ("absent", "MIDLINE")]),
+    ("ri_scroll", r"printf '\033[2;1HLINE-TWO\033[1;1H\033M'",
+     [("row", 3, "LINE-TWO"), ("row", 1, "")]),
+    ("ind_scroll", r"printf '\033[23;1HNEARBOT\033[24;1H\033D'",
+     [("row", 22, "NEARBOT")]),
     ("clear",     "clear; echo AFTER-CLEAR",
      [("has", "AFTER-CLEAR"), ("absent", "READY-XYZ")]),
 ]

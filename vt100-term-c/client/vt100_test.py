@@ -54,6 +54,16 @@ CURSOR_TESTS = [
     ("fwd_clamp",   b"\x1b[2J\x1b[1;78H\x1b[9C",     (1, 80)),
     ("up_clamp",    b"\x1b[2J\x1b[1;5H\x1b[9A",      (1, 5)),
     ("save_restore", b"\x1b[2J\x1b[5;10H\x1b[s\x1b[1;1H\x1b[u", (5, 10)),
+    ("cha",         b"\x1b[2J\x1b[5;10H\x1b[3G",      (5, 3)),
+    ("hpa",         b"\x1b[2J\x1b[5;10H\x1b[7`",      (5, 7)),
+    ("vpa",         b"\x1b[2J\x1b[5;10H\x1b[12d",     (12, 10)),
+    ("cnl",         b"\x1b[2J\x1b[5;10H\x1b[3E",      (8, 1)),
+    ("cpl",         b"\x1b[2J\x1b[5;10H\x1b[2F",      (3, 1)),
+    ("ind",         b"\x1b[2J\x1b[5;10H\x1bD",        (6, 10)),
+    ("ri",          b"\x1b[2J\x1b[5;10H\x1bM",        (4, 10)),
+    ("nel",         b"\x1b[2J\x1b[5;10H\x1bE",        (6, 1)),
+    ("ri_top",      b"\x1b[2J\x1b[1;5H\x1bM",         (1, 5)),
+    ("ind_bottom",  b"\x1b[2J\x1b[24;5H\x1bD",        (24, 5)),
 ]
 
 

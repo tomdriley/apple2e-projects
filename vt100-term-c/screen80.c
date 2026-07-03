@@ -74,6 +74,20 @@ static void shadow_scroll(void)
     shadow_blank_from(SCR_ROWS - 1, 0);
 }
 
+/* Shift the shadow down one row and blank the new top row. */
+static void shadow_scroll_down(void)
+{
+    unsigned char row, i;
+    for (row = SCR_ROWS - 1; row != 0; --row) {
+        unsigned char *d = shadowrow[row];
+        unsigned char *s = shadowrow[row - 1];
+        for (i = 0; i < SCR_COLS; ++i) {
+            d[i] = s[i];
+        }
+    }
+    shadow_blank_from(0, 0);
+}
+
 /* Write one already-high-bit glyph to the cell at (col,row). */
 static void cell_put(unsigned char col, unsigned char row, unsigned char ch)
 {
@@ -158,6 +172,27 @@ static void scroll_up(void)
     shadow_scroll();
 }
 
+static void scroll_down(void)
+{
+    unsigned char row;
+
+    BANK_AUX(); /* shift every row down one, once per bank */
+    for (row = SCR_ROWS - 1; row != 0; --row) {
+        row_copy(row, row - 1);
+        serial_pump();
+    }
+    row_blank_bank(0);
+
+    BANK_MAIN();
+    for (row = SCR_ROWS - 1; row != 0; --row) {
+        row_copy(row, row - 1);
+        serial_pump();
+    }
+    row_blank_bank(0);
+
+    shadow_scroll_down();
+}
+
 void scr_init(void)
 {
     SET80STORE = 0; /* PAGE2 now banks the text page for the CPU */
@@ -190,6 +225,15 @@ void scr_lf(void)
         cur_row = SCR_ROWS - 1;
     } else {
         ++cur_row;
+    }
+}
+
+void scr_ri(void) /* reverse index: up one row, scrolling down at the top */
+{
+    if (cur_row == 0) {
+        scroll_down();
+    } else {
+        --cur_row;
     }
 }
 

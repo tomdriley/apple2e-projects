@@ -14,6 +14,7 @@ void          scr_put(char c); /* glyph at cursor, advance + wrap */
 void          scr_gotoxy(unsigned char col, unsigned char row);
 void          scr_cr(void);        /* cursor to column 0 (same row)  */
 void          scr_lf(void);        /* cursor down, scroll at bottom  */
+void          scr_ri(void);        /* cursor up, scroll down at top   */
 void          scr_bs(void);        /* cursor left (no erase)         */
 void          scr_clear_eol(void); /* erase cursor..end of line      */
 void          scr_clear_bol(void); /* erase start of line..cursor    */
