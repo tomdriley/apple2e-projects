@@ -23,6 +23,11 @@ void          scr_clear_eop(void); /* erase cursor..end of screen    */
 void          scr_clear_bop(void); /* erase start of screen..cursor  */
 void          scr_clear_all(void); /* erase everything, home cursor  */
 void          scr_set_region(unsigned char top, unsigned char bot); /* DECSTBM */
+void          scr_insert_lines(unsigned char n); /* IL: insert blank lines  */
+void          scr_delete_lines(unsigned char n); /* DL: delete lines        */
+void          scr_insert_chars(unsigned char n); /* ICH: insert blanks       */
+void          scr_delete_chars(unsigned char n); /* DCH: delete chars        */
+void          scr_erase_chars(unsigned char n);  /* ECH: erase chars          */
 unsigned char scr_col(void);       /* current column (0-based)       */
 unsigned char scr_row(void);       /* current row (0-based)          */
 

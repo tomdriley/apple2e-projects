@@ -65,32 +65,32 @@ static void shadow_blank_from(unsigned char row, unsigned char from)
     }
 }
 
-/* Shift the shadow up one row within the scroll region; blank the bottom row. */
-static void shadow_scroll(void)
+/* Shift shadow rows [top..bot] up by one; blank the bottom row. */
+static void shadow_region_up(unsigned char top, unsigned char bot)
 {
     unsigned char row, i;
-    for (row = scroll_top; row < scroll_bot; ++row) {
+    for (row = top; row < bot; ++row) {
         unsigned char *d = shadowrow[row];
         unsigned char *s = shadowrow[row + 1];
         for (i = 0; i < SCR_COLS; ++i) {
             d[i] = s[i];
         }
     }
-    shadow_blank_from(scroll_bot, 0);
+    shadow_blank_from(bot, 0);
 }
 
-/* Shift the shadow down one row within the scroll region; blank the top row. */
-static void shadow_scroll_down(void)
+/* Shift shadow rows [top..bot] down by one; blank the top row. */
+static void shadow_region_down(unsigned char top, unsigned char bot)
 {
     unsigned char row, i;
-    for (row = scroll_bot; row != scroll_top; --row) {
+    for (row = bot; row != top; --row) {
         unsigned char *d = shadowrow[row];
         unsigned char *s = shadowrow[row - 1];
         for (i = 0; i < SCR_COLS; ++i) {
             d[i] = s[i];
         }
     }
-    shadow_blank_from(scroll_top, 0);
+    shadow_blank_from(top, 0);
 }
 
 /* Write one already-high-bit glyph to the cell at (col,row). */
@@ -156,47 +156,53 @@ static void row_blank_bank(unsigned char row)
     }
 }
 
-static void scroll_up(void)
+/* Shift video rows [top..bot] up by one (both banks); blank the bottom row. */
+static void region_up(unsigned char top, unsigned char bot)
 {
     unsigned char row;
 
-    BANK_AUX(); /* shift the region up one, once per bank */
-    for (row = scroll_top; row < scroll_bot; ++row) {
-        row_copy(row, row + 1);
-        serial_pump(); /* keep the ACIA drained while we work */
-    }
-    row_blank_bank(scroll_bot);
-
-    BANK_MAIN();
-    for (row = scroll_top; row < scroll_bot; ++row) {
+    BANK_AUX();
+    for (row = top; row < bot; ++row) {
         row_copy(row, row + 1);
         serial_pump();
     }
-    row_blank_bank(scroll_bot);
+    row_blank_bank(bot);
 
-    shadow_scroll();
+    BANK_MAIN();
+    for (row = top; row < bot; ++row) {
+        row_copy(row, row + 1);
+        serial_pump();
+    }
+    row_blank_bank(bot);
+
+    shadow_region_up(top, bot);
 }
 
-static void scroll_down(void)
+/* Shift video rows [top..bot] down by one (both banks); blank the top row. */
+static void region_down(unsigned char top, unsigned char bot)
 {
     unsigned char row;
 
-    BANK_AUX(); /* shift the region down one, once per bank */
-    for (row = scroll_bot; row != scroll_top; --row) {
+    BANK_AUX();
+    for (row = bot; row != top; --row) {
         row_copy(row, row - 1);
         serial_pump();
     }
-    row_blank_bank(scroll_top);
+    row_blank_bank(top);
 
     BANK_MAIN();
-    for (row = scroll_bot; row != scroll_top; --row) {
+    for (row = bot; row != top; --row) {
         row_copy(row, row - 1);
         serial_pump();
     }
-    row_blank_bank(scroll_top);
+    row_blank_bank(top);
 
-    shadow_scroll_down();
+    shadow_region_down(top, bot);
 }
+
+static void scroll_up(void) { region_up(scroll_top, scroll_bot); }
+
+static void scroll_down(void) { region_down(scroll_top, scroll_bot); }
 
 void scr_init(void)
 {
@@ -258,6 +264,98 @@ void scr_set_region(unsigned char top, unsigned char bot)
     scroll_bot = bot;
     cur_col    = 0;
     cur_row    = 0;
+}
+
+/* IL: insert n blank lines at the cursor row, pushing lines below it down to the
+ * bottom margin. DL: delete n lines at the cursor, pulling lines below up. Both
+ * are no-ops when the cursor is outside the scroll region. */
+void scr_insert_lines(unsigned char n)
+{
+    unsigned char i;
+    if (cur_row < scroll_top || cur_row > scroll_bot) {
+        return;
+    }
+    for (i = 0; i < n; ++i) {
+        region_down(cur_row, scroll_bot);
+    }
+}
+
+void scr_delete_lines(unsigned char n)
+{
+    unsigned char i;
+    if (cur_row < scroll_top || cur_row > scroll_bot) {
+        return;
+    }
+    for (i = 0; i < n; ++i) {
+        region_up(cur_row, scroll_bot);
+    }
+}
+
+/* ICH: insert n blanks at the cursor, shifting the rest of the line right (chars
+ * pushed off the right edge are lost). The shadow buffer holds display glyphs,
+ * so it doubles as the source for the shift. */
+void scr_insert_chars(unsigned char n)
+{
+    unsigned char *r = shadowrow[cur_row];
+    unsigned char  col;
+    if (n == 0) {
+        n = 1;
+    }
+    if (n > SCR_COLS - cur_col) {
+        n = SCR_COLS - cur_col;
+    }
+    for (col = SCR_COLS - 1; col >= cur_col + n; --col) {
+        cell_put(col, cur_row, r[col - n]);
+        r[col] = r[col - n];
+        if ((col & 7) == 0) {
+            serial_pump();
+        }
+    }
+    for (col = cur_col; col < cur_col + n; ++col) {
+        cell_put(col, cur_row, BLANK);
+        r[col] = BLANK;
+    }
+}
+
+/* DCH: delete n chars at the cursor, shifting the rest of the line left and
+ * blanking the vacated right end. */
+void scr_delete_chars(unsigned char n)
+{
+    unsigned char *r = shadowrow[cur_row];
+    unsigned char  col;
+    if (n == 0) {
+        n = 1;
+    }
+    for (col = cur_col; col + n < SCR_COLS; ++col) {
+        cell_put(col, cur_row, r[col + n]);
+        r[col] = r[col + n];
+        if ((col & 7) == 0) {
+            serial_pump();
+        }
+    }
+    for (; col < SCR_COLS; ++col) {
+        cell_put(col, cur_row, BLANK);
+        r[col] = BLANK;
+    }
+}
+
+/* ECH: erase n chars from the cursor without shifting the rest of the line. */
+void scr_erase_chars(unsigned char n)
+{
+    unsigned char *r = shadowrow[cur_row];
+    unsigned int   end;
+    unsigned char  col;
+    if (n == 0) {
+        n = 1;
+    }
+    end = (unsigned int)cur_col + n;
+    if (end > SCR_COLS) {
+        end = SCR_COLS;
+    }
+    for (col = cur_col; col < end; ++col) {
+        cell_put(col, cur_row, BLANK);
+        r[col] = BLANK;
+    }
 }
 
 void scr_bs(void)

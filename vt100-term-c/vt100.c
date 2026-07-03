@@ -225,6 +225,26 @@ static void csi_dispatch(unsigned char f)
             scr_set_region((unsigned char)(top - 1), (unsigned char)(bot - 1));
         }
         break;
+    case 'L': /* IL: insert blank lines */
+        n = getp(0);
+        scr_insert_lines((unsigned char)(n ? n : 1));
+        break;
+    case 'M': /* DL: delete lines */
+        n = getp(0);
+        scr_delete_lines((unsigned char)(n ? n : 1));
+        break;
+    case '@': /* ICH: insert blank characters */
+        n = getp(0);
+        scr_insert_chars((unsigned char)(n ? n : 1));
+        break;
+    case 'P': /* DCH: delete characters */
+        n = getp(0);
+        scr_delete_chars((unsigned char)(n ? n : 1));
+        break;
+    case 'X': /* ECH: erase characters */
+        n = getp(0);
+        scr_erase_chars((unsigned char)(n ? n : 1));
+        break;
     default: /* SGR ('m') and anything unrecognized: ignore */
         break;
     }
