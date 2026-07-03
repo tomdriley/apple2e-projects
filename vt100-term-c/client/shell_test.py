@@ -101,6 +101,8 @@ SHELL_TESTS = [
      [("row", 15, "KEEP2"), ("absent", "GONE1")]),
     ("altscreen", r"printf 'MAINSCREEN\033[?1049h\033[2J\033[5;1HALTBUFFER\033[?1049l'",
      [("has", "MAINSCREEN"), ("absent", "ALTBUFFER")]),
+    ("statusbar", r"printf '\033[2J\033[24;1H\033[7mSTATUSLINE\033[0m\033[1;23r\033[1;1H'; seq 1 24",
+     [("row", 24, "STATUSLINE"), ("has", "24")]),
     ("clear",     "clear; echo AFTER-CLEAR",
      [("has", "AFTER-CLEAR"), ("absent", "READY-XYZ")]),
 ]

@@ -81,6 +81,9 @@ static void shadow_region_up(unsigned char top, unsigned char bot)
         unsigned char *s = shadowrow[row + 1];
         for (i = 0; i < SCR_COLS; ++i) {
             d[i] = s[i];
+            if ((i & 15) == 0) {
+                serial_pump(); /* this copy is ~20ms/scroll; keep RX drained */
+            }
         }
     }
     shadow_blank_from(bot, 0);
@@ -95,6 +98,9 @@ static void shadow_region_down(unsigned char top, unsigned char bot)
         unsigned char *s = shadowrow[row - 1];
         for (i = 0; i < SCR_COLS; ++i) {
             d[i] = s[i];
+            if ((i & 15) == 0) {
+                serial_pump();
+            }
         }
     }
     shadow_blank_from(top, 0);
