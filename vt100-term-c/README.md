@@ -79,7 +79,7 @@ The Apple becomes a login console for Linux. On real hardware, use
 ### Test
 
 ```sh
-.venv/Scripts/python.exe client/vt100_test.py            # 29 cursor tests (DSR)
+.venv/Scripts/python.exe client/vt100_test.py            # cursor motion tests (DSR)
 .venv/Scripts/python.exe client/vt100_test.py --keys     # keyboard → serial
 .venv/Scripts/python.exe client/vt100_test.py --keys --app  # application cursor keys
 .venv/Scripts/python.exe client/shell_test.py            # real WSL bash → screen render
