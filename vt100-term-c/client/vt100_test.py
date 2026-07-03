@@ -130,12 +130,18 @@ def run_cursor_tests(conn):
 
 
 # What the Apple should transmit for the injected keys: letter, Enter (CR), then
-# the four arrows as ANSI cursor sequences.
+# the four arrows as ANSI cursor sequences. In application-cursor-keys mode
+# (DECCKM, ESC[?1h) the arrows switch from ESC [ x to ESC O x.
 KEY_EXPECT = b"A\r\x1b[D\x1b[C\x1b[A\x1b[B"
+KEY_EXPECT_APP = b"A\r\x1bOD\x1bOC\x1bOA\x1bOB"
 
 
-def run_key_tests(conn):
+def run_key_tests(conn, app=False):
     drain(conn)
+    if app:
+        # DECCKM on. Sent after draining the boot marker but well before the
+        # arrows are injected (frame 780), so the mode is active in time.
+        conn.sendall(b"\x1b[?1h")
     print("[waiting for keys.lua to inject keys ...]")
     conn.settimeout(0.3)
     buf = bytearray()
@@ -152,16 +158,19 @@ def run_key_tests(conn):
         elif buf and (time.time() - last_change) > 2.0:
             break  # stream settled
     got = bytes(buf)
-    ok = got == KEY_EXPECT
-    print(f"  expected: {KEY_EXPECT!r}")
+    expect = KEY_EXPECT_APP if app else KEY_EXPECT
+    ok = got == expect
+    print(f"  expected: {expect!r}")
     print(f"  got:      {got!r}")
-    print(f"\nkeyboard: {'PASS' if ok else 'FAIL'}")
+    print(f"\nkeyboard{'(app)' if app else ''}: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--keys", action="store_true", help="run keyboard-input tests")
+    ap.add_argument("--app", action="store_true",
+                    help="with --keys: test application cursor keys (DECCKM)")
     args = ap.parse_args()
 
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -176,7 +185,7 @@ def main():
         if not wait_ready(conn):
             print("FAIL: terminal never answered ESC[6n")
             return 1
-        fails = run_key_tests(conn) if args.keys else run_cursor_tests(conn)
+        fails = run_key_tests(conn, args.app) if args.keys else run_cursor_tests(conn)
     finally:
         srv.close()
         mame.terminate()

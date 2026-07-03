@@ -8,4 +8,8 @@
 void vt100_init(void);
 void vt100_feed(char c);
 
+/* Nonzero when the host has enabled application cursor keys (DECCKM, ESC[?1h):
+ * the terminal then sends arrow keys as ESC O A..D instead of ESC [ A..D. */
+unsigned char vt100_app_cursor(void);
+
 #endif /* VT100_H */

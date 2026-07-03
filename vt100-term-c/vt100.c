@@ -21,13 +21,15 @@ static unsigned char state;
 static unsigned int  param[MAXPARAM];
 static unsigned char nparam; /* index of the parameter currently being built */
 static unsigned char priv;   /* a private marker ('?') was seen in this CSI */
+static unsigned char app_cursor; /* DECCKM: application cursor keys enabled */
 static unsigned char saved_col, saved_row;
 
 void vt100_init(void)
 {
-    state     = S_NORMAL;
-    saved_col = 0;
-    saved_row = 0;
+    state      = S_NORMAL;
+    saved_col  = 0;
+    saved_row  = 0;
+    app_cursor = 0;
 }
 
 static void reset_params(void)
@@ -211,6 +213,15 @@ static void csi_dispatch(unsigned char f)
         saved_col = scr_col();
         saved_row = scr_row();
         break;
+    case 'h': /* set mode / DEC private set (ESC[?..h) */
+    case 'l': /* reset mode / DEC private reset (ESC[?..l) */
+        if (priv) {
+            unsigned char on = (unsigned char)(f == 'h');
+            if (getp(0) == 1) {
+                app_cursor = on; /* DECCKM: application cursor keys */
+            }
+        }
+        break;
     case 'u': /* restore cursor */
         scr_gotoxy(saved_col, saved_row);
         break;
@@ -249,6 +260,8 @@ static void csi_dispatch(unsigned char f)
         break;
     }
 }
+
+unsigned char vt100_app_cursor(void) { return app_cursor; }
 
 void vt100_feed(char ch)
 {

@@ -49,7 +49,9 @@ static void send_key(unsigned char c)
         return;
     }
     serial_put(0x1B);
-    serial_put('[');
+    /* In application-cursor-keys mode (DECCKM) the host wants ESC O x, otherwise
+     * the normal ESC [ x. Full-screen apps like vi enable DECCKM. */
+    serial_put(vt100_app_cursor() ? 'O' : '[');
     serial_put((char)c);
 }
 
