@@ -24,15 +24,15 @@ local typed = false
 _keys_sub = emu.add_machine_frame_notifier(function()
     frames = frames + 1
 
-    if frames == 700 and not typed then
+    if frames == 1000 and not typed then
         typed = true
         local nk = manager.machine.natkeyboard
         nk:post("A")
         nk:post(string.char(13)) -- Return / CR
     end
 
-    if frames >= 780 then
-        local rel = frames - 780
+    if frames >= 1100 then
+        local rel = frames - 1100
         local which = math.floor(rel / 24) -- 24 frames per arrow
         local step = rel % 24
         if which < #arrows then
