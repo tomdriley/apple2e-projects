@@ -289,6 +289,13 @@ static void csi_dispatch(unsigned char f)
         n = getp(0);
         scr_erase_chars((unsigned char)(n ? n : 1));
         break;
+    case 'p': /* DECSTR soft reset (ESC[!p): modes/attrs/region, no clear */
+        app_cursor   = 0;
+        attr_inverse = 0;
+        g0_special   = 0;
+        scr_set_attr(0);
+        scr_set_region(0, SCR_ROWS - 1);
+        break;
     default: /* colors/bold and any unrecognized final byte: ignore */
         break;
     }
@@ -365,6 +372,16 @@ void vt100_feed(char ch)
             case 'E': /* NEL: next line -- CR + LF */
                 scr_cr();
                 scr_lf();
+                break;
+            case 'c': /* RIS: hard reset to the initial state */
+                app_cursor   = 0;
+                attr_inverse = 0;
+                g0_special   = 0;
+                saved_col    = 0;
+                saved_row    = 0;
+                scr_set_attr(0);
+                scr_set_region(0, SCR_ROWS - 1);
+                scr_clear_all();
                 break;
             default: /* ignore other two-byte escape sequences */
                 break;

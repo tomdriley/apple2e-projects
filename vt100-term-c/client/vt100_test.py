@@ -66,6 +66,7 @@ CURSOR_TESTS = [
     ("ind_bottom",  b"\x1b[2J\x1b[24;5H\x1bD",        (24, 5)),
     ("decstbm_home", b"\x1b[2J\x1b[10;15H\x1b[5;20r", (1, 1)),
     ("region_reset", b"\x1b[r\x1b[2J\x1b[8;8H",       (8, 8)),
+    ("ris",         b"\x1b[12;30H\x1bc",              (1, 1)),
 ]
 
 
