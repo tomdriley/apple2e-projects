@@ -67,6 +67,8 @@ SHELL_TESTS = [
      [("row", 8, "POSMARK")]),
     ("wrap",      r"printf 'Q%.0s' $(seq 1 90); printf '\r\n'",
      [("row", 1, "Q" * 80), ("row", 2, "Q" * 10)]),
+    ("longline",  "seq 1 200 | paste -sd' ' -",
+     [("has", "199 200")]),
     ("sgr",       r"printf '\033[7mINVERSE\033[0m TEXT\r\n'",
      [("has", "INVERSE"), ("has", "TEXT")]),
     ("sgr_row",   r"printf '\033[12;1HNORMAL \033[7mHILITE\033[0m DONE\r\n'",
