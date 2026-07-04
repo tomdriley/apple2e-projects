@@ -120,9 +120,3 @@ vt100-term-c/
 | [docs/TESTING.md](docs/TESTING.md) | The MAME test harnesses and **how to add a test** |
 | [docs/HACKING.md](docs/HACKING.md) | **How to add an escape sequence or screen op**, cc65 gotchas, performance |
 | [docs/LESSONS.md](docs/LESSONS.md) | Design decisions and the bugs that shaped them |
-
-## License / provenance
-
-This project is one of several Apple IIe examples in the repository. It contains
-no Apple ROM code. The Super Serial Card firmware ROM must be supplied
-separately (dump your own card; see [docs/SERIAL.md](docs/SERIAL.md)).

@@ -87,8 +87,7 @@ socket, and connects **out** to that socket — so a host must be listening firs
 ### The `a2ssc` ROM
 
 `-sl2 ssc` requires the Super Serial Card firmware ROM (`a2ssc`,
-`341-0065-a.bin`). It is copyrighted and not distributed here — dump it from your
-own card (ADTPro can do this) and place it under your MAME `roms/a2ssc/`. The
+`341-0065-a.bin`). Place it under your MAME `roms/a2ssc/`. The
 terminal's slot auto-detection reads this firmware's signature.
 
 ## Real hardware

@@ -53,9 +53,8 @@ mame apple2e -rompath "C:\mame\roms" \
 
 > **MAME needs the SSC firmware ROM** (`a2ssc` / `341-0065-a.bin`, 2 KB). Our
 > program pokes the 6551 registers directly and never calls that firmware, but
-> MAME still refuses to instantiate the card without it. It's a copyrighted
-> Apple ROM — dump it from a card you own (e.g. with ADTPro) and drop it in as
-> `C:\mame\roms\a2ssc\341-0065-a.bin`. Verify with
+> MAME still refuses to instantiate the card without it. Drop it in as
+> `C:\mame\roms\a2ssc\341-0065-a.bin` and verify with
 > `mame -rompath "C:\mame\roms" -verifyroms a2ssc` → *romset a2ssc is good*.
 
 ### On real hardware

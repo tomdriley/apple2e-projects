@@ -16,7 +16,7 @@ Two peers can sit on the far end of the link:
 
   mame  -- Boots build/ssc-serial.dsk in headless MAME with a real Super Serial
         Card and runs the identical round trip against the actual 6502 code.
-        Requires MAME plus the copyrighted apple2e and a2ssc ROMs. If the SSC
+        Requires MAME plus the apple2e and a2ssc ROMs. If the SSC
         ROM is absent the test reports SKIPPED (not FAILED), because the demo
         program itself is fine -- only the emulator's ROM dependency is missing.
 
@@ -212,9 +212,8 @@ def test_mame() -> int:
         return 0
     if not mame_ssc_rom_present():
         print("[mame] SKIP -- the Super Serial Card ROM (a2ssc: 341-0065-a.bin) is")
-        print("[mame]         missing. It is a copyrighted Apple ROM; supply it as")
-        print(f"[mame]         {ROMPATH}\\a2ssc.zip (e.g. dumped from your own card)")
-        print("[mame]         and this mode will run the real 6502 program.\n")
+        print(f"[mame]         missing. Supply it as {ROMPATH}\\a2ssc.zip and this")
+        print("[mame]         mode will run the real 6502 program.\n")
         return 0
 
     def start():
