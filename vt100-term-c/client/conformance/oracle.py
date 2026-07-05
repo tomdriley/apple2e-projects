@@ -180,14 +180,25 @@ def summarize_audit(results: list[dict]) -> dict:
     confirmed = counts.get("spec-confirmed", 0)
     suspect = counts.get("spec-suspect", 0)
     spec_checked = confirmed + suspect
+    spec_total = sum(1 for r in results if r["basis"] == "spec")
+    spec_quirked = sum(1 for r in results
+                       if r["basis"] == "spec" and r["verdict"] == "pyte-quirk")
+    spec_unobservable = sum(1 for r in results
+                            if r["basis"] == "spec"
+                            and r["verdict"] == "skip-unobservable")
     return {
         "total": len(results),
         "counts": dict(counts),
         "spec_confirmed": confirmed,
         "spec_suspect": suspect,
         "spec_checked": spec_checked,
+        "spec_total": spec_total,
+        "spec_quirked": spec_quirked,
+        "spec_unobservable": spec_unobservable,
         "reference_agreement_pct":
             round(100.0 * confirmed / spec_checked, 1) if spec_checked else None,
+        "spec_coverage_pct":
+            round(100.0 * spec_checked / spec_total, 1) if spec_total else None,
         "suspects": [r["id"] for r in results if r["verdict"] == "spec-suspect"],
     }
 
@@ -206,6 +217,12 @@ def print_audit(summary: dict, results: list[dict], verbose: bool) -> None:
     print(f"\n  reference agreement   {summary['spec_confirmed']}/"
           f"{summary['spec_checked']}  {agree_s}"
           "   (spec-confirmed / spec-checked)")
+    cov = summary.get("spec_coverage_pct")
+    cov_s = "n/a" if cov is None else f"{cov}%"
+    print(f"  spec coverage         {summary['spec_checked']}/"
+          f"{summary['spec_total']}  {cov_s}"
+          f"   (pyte-oracled spec cases; {summary['spec_quirked']} pyte-quirk + "
+          f"{summary['spec_unobservable']} unobservable excluded)")
 
     suspects = [r for r in results if r["verdict"] == "spec-suspect"]
     if suspects:
@@ -252,6 +269,15 @@ def run_differential_case(firmware, ref: PyteTarget, case) -> dict:
     if "report" in case.expect:
         return {**base, "outcome": runner.SKIP, "fails": [],
                 "skipped_keys": sorted(case.expect)}
+    # pyte can only oracle the glyph/inverse/cursor planes. A case whose entire
+    # `expect` lives on channels pyte cannot see (firmware `state`) gives a screen
+    # diff nothing to prove -- firmware and pyte would "agree" on a blank screen for
+    # reasons unrelated to the tested behaviour -- so scoring it as a PASS is vacuous.
+    # Skip it (the #13 F-vs-E runner still covers it via the state probe).
+    checkable, _skipped = runner.checkable_expect(case.expect, ref)
+    if not checkable:
+        return {**base, "outcome": runner.SKIP, "fails": [],
+                "skipped_keys": sorted(case.expect)}
     try:
         firmware.reset()
         fw = firmware.render(case.input_bytes)
@@ -260,23 +286,65 @@ def run_differential_case(firmware, ref: PyteTarget, case) -> dict:
         return {**base, "outcome": runner.ERROR,
                 "fails": [f"{type(exc).__name__}: {exc}"], "skipped_keys": []}
     diffs = diff_screens(fw, p)
-    # n_checkable=1: every rendered case has an observable glyph plane to compare, so
-    # a case is only SKIP via the basis/quirk gates above -- never for lack of a key.
-    outcome = runner.classify(case.status, diffs, 1)
+    # The case has >=1 pyte-observable assertion, so the full-screen glyph/inverse/
+    # cursor diff is a valid oracle. n_checkable = len(checkable) (>0) makes classify
+    # score it, and any divergence -- even on a plane the partial `expect` never
+    # asserted -- is surfaced (that is how the ED cursor-homing finding caught two
+    # erase cases whose `expect` did not assert the cursor).
+    outcome = runner.classify(case.status, diffs, len(checkable))
     return {**base, "outcome": outcome, "fails": diffs, "skipped_keys": []}
 
 
 # --------------------------------------------------------------------------- #
 # Self-test: pyte vs pyte -- diff pipeline + determinism, no MAME
 # --------------------------------------------------------------------------- #
+def _diff_detection_checks() -> list[str]:
+    """Positive controls: ``diff_screens`` must DETECT a known difference in each
+    channel it compares, and must NOT report one between identical screens.
+
+    ``--selftest``'s pyte-vs-pyte pass only proves determinism; on its own it would
+    still pass if ``diff_screens`` were silently a no-op (e.g. the inverse-plane
+    comparison never firing). These synthetic controls prove the pipeline bites.
+    """
+    def scr(**kw) -> Screen:
+        base = dict(text=[" " * COLS for _ in range(ROWS)],
+                    inverse=["0" * COLS for _ in range(ROWS)],
+                    cursor=(1, 1), reports=b"", state={})
+        base.update(kw)
+        return Screen(**base)
+
+    fails: list[str] = []
+    glyph = [" " * COLS for _ in range(ROWS)]
+    glyph[2] = "X".ljust(COLS)
+    if not diff_screens(scr(), scr(text=glyph)):
+        fails.append("missed a glyph-plane difference")
+    inv = ["0" * COLS for _ in range(ROWS)]
+    inv[2] = "1" + "0" * (COLS - 1)
+    if not diff_screens(scr(), scr(inverse=inv)):
+        fails.append("missed an inverse-plane difference")
+    if not diff_screens(scr(), scr(cursor=(5, 10))):
+        fails.append("missed a cursor difference")
+    if diff_screens(scr(), scr()):
+        fails.append("reported a difference between identical screens")
+    return fails
+
+
 def run_selftest(cases, ref: PyteTarget) -> int:
+    print("\n== Oracle self-test ==")
+    detect = _diff_detection_checks()
+    if detect:
+        print("  !! diff_screens positive-control FAILED:")
+        for f in detect:
+            print(f"    diff_screens {f}")
+        return 1
+    print("  diff_screens detects glyph/inverse/cursor differences. OK")
+
     bad = []
     for c in cases:
         diffs = diff_screens(ref.render(c.input_bytes), ref.render(c.input_bytes))
         if diffs:
             bad.append((c.id, diffs))
-    print("\n== Oracle self-test (pyte vs pyte) ==")
-    print(f"  cases {len(cases)}")
+    print(f"  pyte-vs-pyte over {len(cases)} cases (determinism)")
     if bad:
         print(f"  !! {len(bad)} case(s) produced non-empty self-diffs:")
         for cid, diffs in bad:
@@ -363,6 +431,11 @@ def main(argv=None) -> int:
     summary = runner.summarize(results)
     summary["mode"] = "differential"
     summary["target"] = f"{args.firmware}-vs-pyte"
+    print("\nNOTE: the metrics below are firmware-vs-pyte *visible* agreement -- a"
+          " glyph/inverse/\ncursor diff against an independent reference, bucketed by"
+          " the runner's spec/basis\nlabels. It is strong evidence for spec conformance"
+          " but is mediated by pyte's own\ncorrectness; cases whose only assertions are"
+          " pyte-unobservable (state, report) are\nSKIPped, not scored.")
     runner.print_report(summary, results, args.verbose)
     _write_json(args.json, summary, results)
 

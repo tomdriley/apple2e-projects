@@ -8,16 +8,19 @@ VT100. Where pyte is demonstrably wrong or incomplete, we say so here so that:
 * a pyte/authored-expect disagreement in the audit is attributed to pyte rather
   than mistaken for a corpus-authoring bug.
 
-The firmware + authored ``expect`` are the trustworthy side for every id/category
-below. This is deliberately *only* the "pyte is wrong" list: cases where the
-**firmware** intentionally diverges from strict spec are handled by the case's
-``basis`` field (``profile``/``tolerance``/``degenerate`` in ``model.VALID_BASIS``),
-not here -- so a firmware divergence that is genuinely non-spec still surfaces in the
-audit instead of being silently suppressed by a hand-maintained allowlist.
+These are *only* cases where pyte 0.8.2 is demonstrably wrong or incomplete, excluded
+from scoring pending a documented pyte limitation -- each entry below states the specific
+defect (what pyte does vs. what the spec requires). Cases where the **firmware**
+intentionally diverges from strict spec are deliberately NOT handled here: the case's
+``basis`` field (``profile``/``tolerance``/``degenerate`` in ``model.VALID_BASIS``)
+carries those, so a genuine firmware non-conformance still surfaces in the audit instead
+of being silently suppressed by a hand-maintained allowlist. The audit prints how many
+``spec``-basis cases these exclusions remove from the denominator (``spec coverage``), so
+the effect on the headline is visible rather than hidden.
 
 Every entry was produced by running ``oracle.py`` over the corpus and probing pyte
-0.8.2 directly (see client/requirements.txt). Re-verify when the pin moves --
-especially NEL, HPA and SCOSC/SCORC, which are the pyte-version-sensitive ones.
+0.8.2 directly (see client/requirements.txt). Re-verify when the pin moves -- especially
+NEL, HPA and SCOSC/SCORC, which are the pyte-version-sensitive ones.
 """
 from __future__ import annotations
 
@@ -38,7 +41,7 @@ QUIRK_CATEGORIES = {
 }
 
 # Finer-grained per-case pyte deviations (id -> reason), found by the audit run.
-# pyte is the unreliable side for these; firmware + authored expect are trusted.
+# pyte is the demonstrably-unreliable side for these (specific defect per entry).
 QUIRK_IDS: dict[str, str] = {
     "cur-vt100-nel":
         "pyte 0.8.2 ESC E (NEL) indexes down without a carriage return (it "
