@@ -20,7 +20,7 @@ works identically on MAME and real hardware — unlike MAME `-autoboot_command`,
 which is emulator-only and timing-sensitive. (AppleCommander tokenizes the
 Applesoft greeting with `-bas`, not `-as`.)
 
-## The 6551 overrun, twice
+## The 6551 overrun, again and again
 
 The 6551 holds exactly one received byte. At 9600 baud it must be read within
 about a millisecond, and two things kept violating that:
@@ -46,6 +46,28 @@ scroll region went missing. The fix was the same: pump inside that loop too. The
 rule that emerged is simply **no memory loop over more than ~40 bytes without a
 `serial_pump()`**. A region-scroll status-bar test is what exposed it.
 
+Removing the shadow buffer (below) brought two more instances — a good reminder
+that a rendering change can re-expose this class of bug somewhere new:
+
+1. **Saving the alternate screen.** `read_row_glyphs` reads a whole 80-cell row
+   back from the video page (~3 ms in cc65), and a `DECSET ?1049h` save reads all
+   24 rows back-to-back while the host keeps streaming the rest of its payload.
+   With no drain inside the read, the tail bytes overran. Fix: `serial_pump()`
+   every 8 cells during the read-back.
+2. **Short erases.** The per-cell erase/shift/redraw loops (`blank_to`,
+   `row_blank_from`, `scr_erase_chars`, insert/delete, and the alternate-screen
+   restore) flip `PAGE2` **per cell** via `cell_put`, and
+   in cc65 each cell is a sizeable fraction of a byte time — so even a 6-cell
+   erase-to-BOL spanned more than one byte time, and the byte that followed the
+   escape sequence (e.g. the `X` in `ESC[1KX`) was overwritten in the RX register
+   and lost. Fix: `serial_pump()` after **every** cell in those loops.
+
+Both were invisible while the shadow existed: the old shadow path wrote a linear,
+non-banked buffer with no per-cell bank switch, so the same loops ran fast enough
+to stay under a byte time. Removing the shadow shifted that compiled timing just
+enough to cross the line — the render change and the serial bug were coupled
+through raw cycle count.
+
 ## Memory-mapped I/O must be `volatile`
 
 An early version cached the 6551 status register because the pointer wasn't
@@ -53,18 +75,31 @@ An early version cached the 6551 status register because the pointer wasn't
 soft-switch reads in loops must be `volatile` so every access is a real bus
 cycle.
 
-## The shadow buffer
+## The shadow buffer, and why it is gone
 
 The first screen dumper toggled `PAGE2` from MAME's Lua to read both memory banks
-of the text page. Done asynchronously on a frame notifier, it raced the running
-terminal and corrupted the display (a doubled, garbled boot screen). There is no
-way to read the bank-split page from outside without touching `PAGE2`.
+of the text page, but it did so naively — without putting the terminal's prior
+`PAGE2` state back — so the CPU resumed banked into the wrong half of the text
+page. That raced the running terminal and corrupted the display (a doubled,
+garbled boot screen).
 
-The fix was to stop reading the video page at all: the firmware mirrors every
-glyph into a plain, linear, non-banked buffer at `$7000`, and the dumper reads
-**that**. No banking, no race, no side effects. It costs ~2 KB of otherwise-
-unused RAM in the gap below the C stack, and it is the single thing that makes
-the shell-render test suite possible.
+The original reaction was to stop reading the video page at all: the firmware
+mirrored every glyph into a plain, linear, non-banked buffer at `$7000`, and the
+dumper read **that**. No banking, no race, no side effects — and it made the
+shell-render test suite possible. But it was not free: the mirror had to be
+updated on every screen mutation, and on a scroll that linear copy moves as many
+bytes as both video banks combined, so it **roughly doubled the cost of every
+scroll** (see [docs/PERFORMANCE.md](PERFORMANCE.md)).
+
+So the shadow was later **removed**. The insight that made that safe: you *can*
+read the bank-split page from outside — you just have to toggle `PAGE2` **from the
+frame notifier, which fires with the CPU paused between frames, and put `PAGE2`
+back exactly as you found it** before the CPU resumes. The reader samples the
+current state from the `RDPAGE2` soft switch (`$C01C`, bit 7), reads MAIN and AUX,
+then restores it. Between-frames access plus an exact restore is the whole
+difference from the first naive attempt; it does not race the terminal at all.
+With the reader no longer needing plain RAM, the firmware writes only the real
+video page, and scrolling is ~47% faster.
 
 ## Windows file semantics bit the dumper
 
@@ -72,7 +107,7 @@ Publishing the snapshot went through two wrong versions before the right one:
 
 - `os.rename(tmp, dst)` **fails if `dst` exists on Windows** (POSIX would
   overwrite). Symptom: `screen.txt` froze at the very first, pre-boot, blank
-  snapshot forever — which looked exactly like a broken shadow buffer and cost
+  snapshot forever — which looked exactly like a broken screen reader and cost
   hours to diagnose.
 - Removing `dst` first, or writing `dst` directly, can then fail while the Python
   reader holds the file open (a sharing violation).
@@ -108,6 +143,6 @@ reads as backspace and friends, not cursor motion. `term.c` translates them to
 ## Testing philosophy
 
 Prefer assertions the machine can make unambiguously: cursor-position reports for
-motion, and a settled snapshot of the shadow buffer for rendering. Choose test
+motion, and a settled snapshot of the rendered video page for rendering. Choose test
 commands whose **output** differs from the typed text, so a pass proves the
 terminal rendered the result rather than merely echoing input.

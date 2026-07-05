@@ -76,31 +76,32 @@ the top margin. The same primitives implement **IL/DL** by scrolling the sub-
 region from the cursor row to the bottom margin.
 
 Insert/delete/erase **character** operations shift cells within a single row.
-They read their source glyphs from the shadow buffer (below), which already holds
-display bytes, and write both the video page and the shadow.
+Insert/delete read their source glyphs back from the video page via
+`read_row_glyphs(row, buf)`, then write only the video page.
 
-## The shadow buffer
+## Reading glyphs back
 
-Because the text page is bank-split, it cannot be read from outside the machine
-without toggling `PAGE2` and racing the CPU. So every screen mutation also writes
-a plain, linear, non-banked copy at `$7000`:
+The firmware does not keep a separate linear copy of the screen. Most screen
+mutations write only the bank-split video page. When an operation needs the
+current display bytes, `read_row_glyphs(row, buf)` reads one complete row back
+from the video page:
 
-```
-shadow byte(row, col) = *(unsigned char *)(0x7000 + row * 80 + col)
-```
+- even columns from AUX memory;
+- odd columns from MAIN memory;
+- two `PAGE2` bank switches per row.
 
-`shadowrow[24]` holds the base pointer for each row (`$7000`, `$7050`, …). The
-buffer sits in the free gap between the top of the linked image and the C stack
-(see [docs/ARCHITECTURE.md](ARCHITECTURE.md#memory-map)), so nothing else uses
-it. The test harness reads it directly — no banking, no side effects — which is
-what makes deterministic screen assertions possible. See
+Only a handful of paths need this: insert/delete characters within a row and
+saving the screen for the alternate-screen buffer. The test harness uses the
+same idea externally, reading both banks between MAME frames; see
 [docs/TESTING.md](TESTING.md).
 
 ## The overrun hazard
 
 At 9600 baud a byte arrives roughly every millisecond, but the 6551 has only a
-one-byte receive register. A slow screen operation (a full-row clear is ~1.5 ms)
-can therefore drop the byte that arrives while it runs. Every slow loop here —
-row fills, row copies, character shifts — calls `serial_pump()` every 8 cells to
-drain the ACIA into the ring buffer in time. This subtlety is documented in
+one-byte receive register. Removing the separate screen copy re-exposed thin
+timing margins in the slow paths. Single-bank row fills and copies pump
+periodically, `read_row_glyphs()` pumps every 8 cells, and per-cell
+bank-switching erase/shift loops pump after every cell. Each `cell_put()` flips
+`PAGE2` and is slow enough in cc65 that even a short erase can otherwise drop
+the byte that follows an escape sequence. This subtlety is documented in
 [docs/SERIAL.md](SERIAL.md) and [docs/LESSONS.md](LESSONS.md).

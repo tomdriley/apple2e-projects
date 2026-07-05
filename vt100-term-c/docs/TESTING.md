@@ -69,7 +69,8 @@ flowchart TB
 ```
 
 - MAME runs [client/screen_watch.lua](../client/screen_watch.lua), which snapshots
-  the shadow buffer at `$7000` to `build/screen.txt` about four times a second.
+  the video text page (both banks) to `build/screen.txt` about four times a
+  second.
 - Each command runs in a **fresh** `wsl.exe -e bash -c "…"` (deterministic; avoids
   the interactive-bash-under-ConPTY stall — see [docs/BRIDGE.md](BRIDGE.md)). The
   MAME terminal stays booted for the whole suite and is cleared between cases.
@@ -90,12 +91,13 @@ the echoed keystrokes (e.g. `echo $((6*7))` → `42`).
 
 ## How the screen dumper stays out of the way
 
-`screen_watch.lua` reads only the non-banked shadow buffer, so it never toggles
-`PAGE2` or otherwise perturbs the running terminal. It writes the whole 24-line
-snapshot in one `io.open("w")` and wraps the write in `pcall`, so a transient
-Windows file lock (the reader holding `screen.txt` open) can never crash the
-frame notifier and freeze the dump. See [docs/LESSONS.md](LESSONS.md) for the
-saga behind those two decisions.
+`screen_watch.lua` reads the bank-split video page by toggling `PAGE2` from a
+machine-frame notifier while the CPU is paused between frames, then restores the
+terminal's `PAGE2` state. Because it runs between frames, it does not perturb
+the running terminal. It writes the whole 24-line snapshot in one `io.open("w")`
+and wraps the write in `pcall`, so a transient Windows file lock (the reader
+holding `screen.txt` open) can never crash the frame notifier and freeze the
+dump.
 
 ## Requirements
 

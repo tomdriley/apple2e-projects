@@ -40,74 +40,13 @@ static unsigned char cur_attr;
 #define BLANK       0xA0           /* high-bit space = empty cell         */
 #define PERROW      40             /* bytes per row within one bank        */
 
-/* --- Shadow copy of the screen ---------------------------------------------
- * The real text page is split across two memory banks (even columns in AUX,
- * odd in MAIN) and is selected by the PAGE2 soft switch. An external monitor
- * such as MAME's Lua cannot read both banks without toggling PAGE2, and doing
- * that asynchronously races with the running terminal and corrupts the display.
- * To make the screen observable without any bank switching, we mirror every
- * visible glyph into a plain, linear, non-banked RAM buffer at a fixed address.
- * The test harness reads this buffer directly: 80 bytes per row, 24 rows.
- *
- * It lives in the free gap above the linked image (MEMORY top is $7000) and
- * below the C stack (bottom $7800), so nothing else ever touches it. */
-static unsigned char *const shadowrow[SCR_ROWS] = {
-    (unsigned char *)0x7000, (unsigned char *)0x7050, (unsigned char *)0x70A0,
-    (unsigned char *)0x70F0, (unsigned char *)0x7140, (unsigned char *)0x7190,
-    (unsigned char *)0x71E0, (unsigned char *)0x7230, (unsigned char *)0x7280,
-    (unsigned char *)0x72D0, (unsigned char *)0x7320, (unsigned char *)0x7370,
-    (unsigned char *)0x73C0, (unsigned char *)0x7410, (unsigned char *)0x7460,
-    (unsigned char *)0x74B0, (unsigned char *)0x7500, (unsigned char *)0x7550,
-    (unsigned char *)0x75A0, (unsigned char *)0x75F0, (unsigned char *)0x7640,
-    (unsigned char *)0x7690, (unsigned char *)0x76E0, (unsigned char *)0x7730
-};
-
-/* Fill shadow columns [from..last] of one row with blanks. */
-static void shadow_blank_from(unsigned char row, unsigned char from)
-{
-    unsigned char *r = shadowrow[row];
-    unsigned char  col;
-    for (col = from; col < SCR_COLS; ++col) {
-        r[col] = BLANK;
-        if ((col & 15) == 0) {
-            serial_pump(); /* blanking a full row is ~0.9ms; keep RX drained */
-        }
-    }
-}
-
-/* Shift shadow rows [top..bot] up by one; blank the bottom row. */
-static void shadow_region_up(unsigned char top, unsigned char bot)
-{
-    unsigned char row, i;
-    for (row = top; row < bot; ++row) {
-        unsigned char *d = shadowrow[row];
-        unsigned char *s = shadowrow[row + 1];
-        for (i = 0; i < SCR_COLS; ++i) {
-            d[i] = s[i];
-            if ((i & 15) == 0) {
-                serial_pump(); /* this copy is ~20ms/scroll; keep RX drained */
-            }
-        }
-    }
-    shadow_blank_from(bot, 0);
-}
-
-/* Shift shadow rows [top..bot] down by one; blank the top row. */
-static void shadow_region_down(unsigned char top, unsigned char bot)
-{
-    unsigned char row, i;
-    for (row = bot; row != top; --row) {
-        unsigned char *d = shadowrow[row];
-        unsigned char *s = shadowrow[row - 1];
-        for (i = 0; i < SCR_COLS; ++i) {
-            d[i] = s[i];
-            if ((i & 15) == 0) {
-                serial_pump();
-            }
-        }
-    }
-    shadow_blank_from(top, 0);
-}
+/* --- Reading glyphs back from the video page -------------------------------
+ * The text page is split across two banks (even columns in AUX, odd in MAIN),
+ * selected by the PAGE2 soft switch. Rendering only ever writes the video page;
+ * the few operations that need the current on-screen glyphs (inserting/deleting
+ * characters within a line, and saving the screen for the alternate buffer) read
+ * them back from the video page a whole row at a time (see read_row_glyphs),
+ * which costs just two bank switches per row. */
 
 /* Write one already-high-bit glyph to the cell at (col,row). */
 static void cell_put(unsigned char col, unsigned char row, unsigned char ch)
@@ -122,27 +61,61 @@ static void cell_put(unsigned char col, unsigned char row, unsigned char ch)
     BANK_MAIN(); /* leave main banked in as the resting state */
 }
 
+/* Read one whole video row's 80 glyphs into buf, using just two bank switches:
+ * even columns come from AUX, odd columns from MAIN. Leaves MAIN banked. buf
+ * must live outside the $0400-$07FF text page (a stack or fixed-RAM buffer).
+ *
+ * Reading a whole row is slow in cc65 (~3 ms), which is several 9600-baud byte
+ * times, so we drain the ACIA as we go: the 6551 has a single receive register
+ * (no FIFO) and reception is polled, so without this a host streaming bytes
+ * during a save (DECSET ?1049h reads all 24 rows back-to-back) would overrun the
+ * register and silently drop the bytes that follow. serial_pump() only touches
+ * the ACIA (I/O space) and the ring buffer (outside $0400-$07FF), so it is safe
+ * to call with either bank paged in. */
+static void read_row_glyphs(unsigned char row, unsigned char *buf)
+{
+    unsigned char *base = (unsigned char *)rowbase[row];
+    unsigned char  i;
+    BANK_AUX();
+    for (i = 0; i < PERROW; ++i) {
+        buf[i << 1] = base[i];
+        if ((i & 7) == 0) {
+            serial_pump();
+        }
+    }
+    BANK_MAIN();
+    for (i = 0; i < PERROW; ++i) {
+        buf[(i << 1) + 1] = base[i];
+        if ((i & 7) == 0) {
+            serial_pump();
+        }
+    }
+}
+
 /* Fill columns [from..last] of one row with blanks. */
 static void row_blank_from(unsigned char row, unsigned char from)
 {
     unsigned char col;
     for (col = from; col < SCR_COLS; ++col) {
         cell_put(col, row, BLANK);
+        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
 }
 
-/* Fill columns [0..to] of one row with blanks, in both the video page and the
- * shadow. Used by the "erase to cursor" / "erase whole line" operations. */
+/* Fill columns [0..to] of one row with blanks in the video page. Used by the
+ * "erase to cursor" / "erase whole line" operations. */
 static void blank_to(unsigned char row, unsigned char to)
 {
-    unsigned char *r = shadowrow[row];
-    unsigned char  col;
+    unsigned char col;
     for (col = 0; col <= to; ++col) {
         cell_put(col, row, BLANK);
-        r[col] = BLANK;
-        if ((col & 7) == 0) {
-            serial_pump(); /* drain the ACIA so the next byte isn't overrun */
-        }
+        /* Drain the ACIA after every cell. Each cell_put bank-switches the video
+         * page, which in cc65 takes a sizeable fraction of a 9600-baud byte time,
+         * so even a short erase (e.g. EL-to-BOL) can span more than one byte time.
+         * The 6551 has a single RX register with no FIFO and is polled, so a
+         * coarser cadence lets the byte that follows the sequence overrun and be
+         * lost before the parser reads it. */
+        serial_pump();
     }
 }
 
@@ -190,8 +163,6 @@ static void region_up(unsigned char top, unsigned char bot)
         serial_pump();
     }
     row_blank_bank(bot);
-
-    shadow_region_up(top, bot);
 }
 
 /* Shift video rows [top..bot] down by one (both banks); blank the top row. */
@@ -212,8 +183,6 @@ static void region_down(unsigned char top, unsigned char bot)
         serial_pump();
     }
     row_blank_bank(top);
-
-    shadow_region_down(top, bot);
 }
 
 static void scroll_up(void) { region_up(scroll_top, scroll_bot); }
@@ -309,28 +278,26 @@ void scr_delete_lines(unsigned char n)
 }
 
 /* ICH: insert n blanks at the cursor, shifting the rest of the line right (chars
- * pushed off the right edge are lost). The shadow buffer holds display glyphs,
- * so it doubles as the source for the shift. */
+ * pushed off the right edge are lost). We snapshot the current row's glyphs from
+ * the video page and shift from that snapshot. */
 void scr_insert_chars(unsigned char n)
 {
-    unsigned char *r = shadowrow[cur_row];
-    unsigned char  col;
+    unsigned char buf[SCR_COLS];
+    unsigned char col;
     if (n == 0) {
         n = 1;
     }
     if (n > SCR_COLS - cur_col) {
         n = SCR_COLS - cur_col;
     }
+    read_row_glyphs(cur_row, buf);
     for (col = SCR_COLS - 1; col >= cur_col + n; --col) {
-        cell_put(col, cur_row, r[col - n]);
-        r[col] = r[col - n];
-        if ((col & 7) == 0) {
-            serial_pump();
-        }
+        cell_put(col, cur_row, buf[col - n]);
+        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
     for (col = cur_col; col < cur_col + n; ++col) {
         cell_put(col, cur_row, BLANK);
-        r[col] = BLANK;
+        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
 }
 
@@ -338,28 +305,25 @@ void scr_insert_chars(unsigned char n)
  * blanking the vacated right end. */
 void scr_delete_chars(unsigned char n)
 {
-    unsigned char *r = shadowrow[cur_row];
-    unsigned char  col;
+    unsigned char buf[SCR_COLS];
+    unsigned char col;
     if (n == 0) {
         n = 1;
     }
+    read_row_glyphs(cur_row, buf);
     for (col = cur_col; col + n < SCR_COLS; ++col) {
-        cell_put(col, cur_row, r[col + n]);
-        r[col] = r[col + n];
-        if ((col & 7) == 0) {
-            serial_pump();
-        }
+        cell_put(col, cur_row, buf[col + n]);
+        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
     for (; col < SCR_COLS; ++col) {
         cell_put(col, cur_row, BLANK);
-        r[col] = BLANK;
+        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
 }
 
 /* ECH: erase n chars from the cursor without shifting the rest of the line. */
 void scr_erase_chars(unsigned char n)
 {
-    unsigned char *r = shadowrow[cur_row];
     unsigned int   end;
     unsigned char  col;
     if (n == 0) {
@@ -371,7 +335,7 @@ void scr_erase_chars(unsigned char n)
     }
     for (col = cur_col; col < end; ++col) {
         cell_put(col, cur_row, BLANK);
-        r[col] = BLANK;
+        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
 }
 
@@ -396,7 +360,6 @@ void scr_put(char c)
         glyph = (unsigned char)(u | 0x80); /* normal high-bit ASCII */
     }
     cell_put(cur_col, cur_row, glyph);
-    shadowrow[cur_row][cur_col] = glyph;
     if (++cur_col >= SCR_COLS) {
         cur_col = 0;
         scr_lf();
@@ -409,7 +372,6 @@ void scr_set_attr(unsigned char inverse) { cur_attr = inverse; }
 void scr_clear_eol(void)
 {
     row_blank_from(cur_row, cur_col);
-    shadow_blank_from(cur_row, cur_col);
 }
 
 void scr_clear_bol(void) { blank_to(cur_row, cur_col); }
@@ -429,9 +391,6 @@ void scr_clear_bop(void)
         row_blank_bank(row);
         serial_pump();
     }
-    for (row = 0; row < cur_row; ++row) {
-        shadow_blank_from(row, 0);
-    }
     blank_to(cur_row, cur_col); /* partial current row: start..cursor */
 }
 
@@ -439,7 +398,6 @@ void scr_clear_eop(void)
 {
     unsigned char row;
     row_blank_from(cur_row, cur_col); /* partial current row */
-    shadow_blank_from(cur_row, cur_col);
     BANK_AUX();
     for (row = cur_row + 1; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
@@ -449,9 +407,6 @@ void scr_clear_eop(void)
     for (row = cur_row + 1; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
         serial_pump();
-    }
-    for (row = cur_row + 1; row < SCR_ROWS; ++row) {
-        shadow_blank_from(row, 0);
     }
 }
 
@@ -468,29 +423,22 @@ void scr_clear_all(void)
         row_blank_bank(row);
         serial_pump();
     }
-    for (row = 0; row < SCR_ROWS; ++row) {
-        shadow_blank_from(row, 0);
-    }
     cur_col = 0;
     cur_row = 0;
 }
 
-/* Alternate screen (DECSET ?1049/?47/?1047). The shadow buffer already holds the
- * whole 80x24 screen as display glyphs, so saving it to a spare RAM area and
- * restoring it later gives a clean save/restore for full-screen apps. The save
- * area sits just below the shadow buffer, in the free RAM below the C stack. */
-#define SAVE_BASE    ((unsigned char *)0x6800)
-#define SCREEN_CELLS ((unsigned int)SCR_COLS * SCR_ROWS)
+/* Alternate screen (DECSET ?1049/?47/?1047). Save reads the whole 80x24 screen
+ * back from the video page into a spare RAM area as display glyphs; restore
+ * paints it back later. That gives a clean save/restore for full-screen apps.
+ * The save area sits in free RAM below the C stack. */
+#define SAVE_BASE ((unsigned char *)0x6800)
 
 void scr_save_screen(void)
 {
-    unsigned char *sh = shadowrow[0]; /* the shadow is contiguous from $7000 */
-    unsigned int   i;
-    for (i = 0; i < SCREEN_CELLS; ++i) {
-        SAVE_BASE[i] = sh[i];
-        if ((i & 7) == 0) {
-            serial_pump(); /* this 1920-byte copy is slow; keep RX drained */
-        }
+    unsigned char row;
+    for (row = 0; row < SCR_ROWS; ++row) {
+        read_row_glyphs(row, SAVE_BASE + (unsigned int)row * SCR_COLS);
+        serial_pump(); /* this 1920-byte read is slow; keep RX drained */
     }
     saved_screen_col = cur_col;
     saved_screen_row = cur_row;
@@ -498,22 +446,12 @@ void scr_save_screen(void)
 
 void scr_restore_screen(void)
 {
-    unsigned char *sh = shadowrow[0];
-    unsigned int   i;
-    unsigned char  row, col;
-    for (i = 0; i < SCREEN_CELLS; ++i) {
-        sh[i] = SAVE_BASE[i];
-        if ((i & 7) == 0) {
-            serial_pump();
-        }
-    }
+    unsigned char row, col;
     for (row = 0; row < SCR_ROWS; ++row) {
-        unsigned char *r = shadowrow[row];
+        unsigned char *s = SAVE_BASE + (unsigned int)row * SCR_COLS;
         for (col = 0; col < SCR_COLS; ++col) {
-            cell_put(col, row, r[col]);
-            if ((col & 7) == 0) {
-                serial_pump(); /* keep the ACIA drained during the full redraw */
-            }
+            cell_put(col, row, s[col]);
+            serial_pump(); /* per-cell ACIA drain (see blank_to) */
         }
     }
     cur_col = saved_screen_col;
