@@ -118,5 +118,6 @@ vt100-term-c/
 | [docs/SERIAL.md](docs/SERIAL.md) | The 6551 driver, slot detection, ring buffer, flow control, overrun nuances |
 | [docs/BRIDGE.md](docs/BRIDGE.md) | The WSL bash bridge (pywinpty/ConPTY), transports, real hardware |
 | [docs/TESTING.md](docs/TESTING.md) | The MAME test harnesses and **how to add a test** |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Where scroll time goes, the ~80-cyc/byte copy loop, benchmark-vs-assembly cross-check |
 | [docs/HACKING.md](docs/HACKING.md) | **How to add an escape sequence or screen op**, cc65 gotchas, performance |
 | [docs/LESSONS.md](docs/LESSONS.md) | Design decisions and the bugs that shaped them |
