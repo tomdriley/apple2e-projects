@@ -1,0 +1,7 @@
+# Python dependencies for the VT100 terminal test harness (client/).
+#
+# The core suites (vt100_test.py, shell_test.py, bench.py) use only the Python
+# standard library and drive MAME over a socket. The conformance oracle
+# (conformance/oracle.py, issue #18) additionally needs pyte, a pure-Python
+# ECMA-48 screen model used as an independent reference terminal.
+pyte==0.8.2
