@@ -9,8 +9,8 @@ Most sequences are a few lines in the CSI dispatcher.
 
 1. **Implement the screen effect** (if new) in [screen80.c](../screen80.c) and
    declare it in [screen.h](../screen.h). Keep the interface Apple-agnostic — the
-   parser must not know about banks or addresses. Update the **shadow buffer**
-   wherever you change the video page, or the tests will read stale content.
+   parser must not know about banks or addresses. Write the video page through
+   `cell_put()` or the existing screen80 helpers.
 2. **Dispatch it** in `csi_dispatch()` in [vt100.c](../vt100.c). Read parameters
    with `getp(n)` (returns 0 if absent; apply the sequence's default). The
    `priv` flag is set when the CSI had a `?`.
@@ -38,10 +38,11 @@ The reusable primitives in `screen80.c`:
 - `blank_to(row, to)` / `row_blank_from(row, from)` — blank a span of a row.
 - `region_up(top, bot)` / `region_down(top, bot)` — scroll a row range one line.
 
-Any loop that can run longer than ~1 ms must call `serial_pump()` periodically
-(the convention here is every 8 cells) so the 6551 doesn't overrun. When you
-shift cells within a row, read the source glyphs from `shadowrow[row]` — the
-shadow already holds display bytes.
+Any loop that can run longer than ~1 ms must call `serial_pump()` so the 6551
+doesn't overrun. Single-bank row loops pump every 8 cells; per-cell
+bank-switching loops that use `cell_put()` must pump after every cell. When you
+shift cells within a row, read the source glyphs from the video page with
+`read_row_glyphs(row, buf)` into a local buffer, then shift.
 
 ## cc65 conventions that matter
 
@@ -58,8 +59,8 @@ shadow already holds display bytes.
   before it is called, or you get an implicit-declaration / conflicting-type
   error.
 - **Watch the byte budget.** The image loads at `$0800` and must stay below the
-  shadow buffer at `$7000` (and below the C stack). `make` prints the size; the
-  linker map is `build/vt100.map`.
+  alternate-screen save area at `$6800` and the C stack. `make` prints the size;
+  the linker map is `build/vt100.map`.
 - **Inspect the generated assembly.** `build/<name>.s` is the compiler's 6502
   output. Reading it is the reliable way to judge a hot loop's cycle cost — that's
   how the every-8-cells pump interval was chosen.
@@ -74,10 +75,9 @@ but tighten the overrun margins — keep flow control on.
 ## Change the screen size
 
 `SCR_COLS`/`SCR_ROWS` in [screen.h](../screen.h) parameterize most of the code,
-but the `rowbase[]` and `shadowrow[]` tables in `screen80.c` are hand-built for
-80×24 and the shadow's fixed address. Changing geometry means regenerating both
-tables and re-checking the memory map. 80×24 is the natural fit for the IIe's
-hardware text page.
+but the `rowbase[]` table in `screen80.c` is hand-built for 80×24. Changing
+geometry means regenerating it and re-checking the memory map. 80×24 is the
+natural fit for the IIe's hardware text page.
 
 ## Performance notes
 

@@ -1,14 +1,16 @@
 # Rendering performance
 
 This documents where the firmware spends its time on busy output, why the
-**screen shadow** (`$7000`) is expensive, and how the measured benchmark numbers
+**screen shadow** (`$7000`) was expensive (it has since been removed), and how the
+measured benchmark numbers
 line up with the compiled 6502 assembly. It exists so the reasoning behind the
 "remove the shadow" optimization is recoverable later.
 
 The load-bearing result: a full 80×24 scroll costs **~345K cycles** by static
 analysis of the compiled code, which matches the **~350K cycles** measured by the
-benchmark (`client/bench.py`) to within ~1–2%. The shadow is ~160K of those
-cycles, so removing it should make scrolling roughly **twice as fast**.
+benchmark (`client/bench.py`) to within ~1–2%. The shadow was ~160K of those
+cycles, so removing it should make scrolling roughly **twice as fast**. (Confirmed
+below — scrolling came out ~47% faster.)
 
 ## What a scroll does
 
@@ -124,10 +126,61 @@ The shadow pass alone accounts for roughly:
 Removing it drops the scroll path from ~345K to ~182K cycles, predicting a
 per-scroll cost of **~343 ms → ~180 ms (~48% faster)**. Crucially, the scroll
 path only *deletes* work (`shadow_region_*` / `shadow_blank_from`) and adds no new
-reads, so this prediction is clean. The `after.json` benchmark should land near
-this number; other ops that currently *read* the shadow (`scr_insert_chars`,
-`scr_save/restore`) will need to read the video page back instead, but those are
-off the hot scroll path.
+reads, so this prediction is clean — and it landed almost exactly (measured
+below). The other ops that *read* the shadow (`scr_insert_chars`,
+`scr_save/restore`) now read the video page back instead, but those are off the
+hot scroll path.
+
+## Measured: after removing the shadow
+
+The shadow was removed and the benchmark re-run (`after.json`, same harness,
+emulated time). The prediction holds almost exactly — the isolated per-scroll
+cost drops from **343 ms to 181 ms**:
+
+```
+per-scroll (after) = (7.411 - 3.788) / (40 - 20) = 0.181 s   (predicted ~0.180 s)
+```
+
+Full before/after, emulated-time median (seconds; lower is faster):
+
+| Workload | Before | After | Faster |
+|----------|-------:|------:|-------:|
+| `scroll_il`  (20 scrolls)               |  7.143 | 3.788 | **47.0%** |
+| `scroll_big` (40 scrolls)               | 14.008 | 7.411 | **47.1%** |
+| `cat_narrow` (short lines, scroll-heavy) |  8.197 | 4.651 | 43.3% |
+| `cat_wide`   (full-width lines)          |  5.689 | 4.426 | 22.2% |
+| `clear_spam` (`ESC[2J` heavy)           |  6.472 | 3.660 | 43.4% |
+| `altscreen`  (save/restore)             | 12.049 | 9.983 | 17.1% |
+
+Reading the numbers:
+
+- **Scroll-bound workloads (`scroll_il`, `scroll_big`, `cat_narrow`) land at
+  ~43–47% faster**, right on the ~48% prediction: the shadow scroll pass was
+  copying as many bytes as both video banks combined, and it is simply gone.
+- **`clear_spam` (~43%)** improves for the same reason — `ESC[2J` used to blank
+  the shadow as well as both video banks.
+- **`cat_wide` (22%)** shows a smaller win: full-width lines spend proportionally
+  more time in `scr_put` (per-character rendering, unchanged) and less in
+  scrolling, so removing the shadow moves a smaller share of the total.
+- **`altscreen` (17%)** is the smallest win. Removing the shadow still helps — the
+  save has no shadow to maintain, and the ALTBUFFER rendering between save and
+  restore no longer mirrors every write — but the save now reads the bank-split
+  video page back a row at a time (`read_row_glyphs`), and the restore redraw
+  bank-switches per cell and so must pump the ACIA after every cell (see the
+  overrun note below). Those make the save/restore itself a bit more expensive,
+  so the net gain is modest.
+
+### Cost of removal: two re-exposed ACIA overruns
+
+Removing the shadow shifted the cc65-compiled timing of the render loops, which
+re-exposed two thin receive-overrun margins in the polled, single-byte-RX 6551
+path (see [docs/LESSONS.md](LESSONS.md)). Both were fixed by draining the ACIA
+more often: `read_row_glyphs` pumps every 8 cells during a row read-back, and the
+per-cell bank-switching loops (`blank_to`, `row_blank_from`, `scr_erase_chars`,
+`scr_insert_chars`, `scr_delete_chars`, and the alternate-screen `scr_restore_screen`
+redraw) now pump after every cell. These pumps are off the hot scroll path, so
+they do not dent the scroll numbers above (they are the reason `altscreen` gains
+less than the rest).
 
 ## Reproducing
 

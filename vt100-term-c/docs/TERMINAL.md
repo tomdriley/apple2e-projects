@@ -98,8 +98,9 @@ operate within the cursor's row.
 ### Consumed and ignored
 
 Inverse video (`SGR 7`) is rendered using the IIe's inverse character codes; the
-shadow buffer stores the display glyph so inverse survives scrolling, insert/
-delete, and the alternate-screen save/restore. Because the non-enhanced apple2e
+video page stores the display glyph directly, so inverse survives scrolling,
+insert/delete, and the alternate-screen save/restore. Insert/delete read glyphs
+back from the video page when they shift cells. Because the non-enhanced apple2e
 character set has no inverse lower case, inverse lower-case text shows as inverse
 **upper** case.
 

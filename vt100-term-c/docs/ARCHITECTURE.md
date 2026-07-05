@@ -13,14 +13,13 @@ flowchart LR
         TERM[term.c<br/>main loop] -->|received byte| VT[vt100.c<br/>ANSI parser]
         VT -->|scr_put / gotoxy / erase / scroll| SCR[screen80.c<br/>80-col driver]
         SCR --> AUX[(Aux/Main<br/>text page<br/>$0400-$07FF)]
-        SCR --> SHADOW[(Shadow buffer<br/>$7000-$777F)]
         TERM -->|keystroke / arrow| SER[serial.c<br/>6551 driver]
         VT -->|DSR / DA replies| SER
         SER <--> ACIA[(6551 ACIA<br/>slot 2 $C0A8)]
     end
     ACIA <-->|RS-232 / null modem| HOST[Serial host<br/>client/*.py]
     AUX --> VIDEO[80-col video]
-    SHADOW -.read by.-> LUA[screen_watch.lua<br/>test harness]
+    AUX -.read both banks<br/>between frames.-> LUA[screen_watch.lua<br/>test harness]
 ```
 
 - **`term.c`** owns the main loop. Each pass: drain the ACIA into the receive
@@ -30,8 +29,8 @@ flowchart LR
   screen; escape sequences drive cursor moves, erases, scrolling, and mode
   changes; queries (ESC[6n, ESC[c) are answered back over serial.
 - **`screen80.c`** implements the `screen.h` interface against the IIe's
-  interleaved 80-column text page, and mirrors every glyph into an off-screen
-  **shadow buffer** so tests can read the screen without perturbing it.
+  interleaved 80-column text page. Tests read that page directly by toggling
+  `PAGE2` from MAME's frame notifier while the CPU is paused between frames.
 - **`serial.c`** drives the 6551, auto-detects the Super Serial Card's slot,
   buffers received bytes in a ring, and applies XON/XOFF flow control.
 - **`monitor.s/.h`** is just a registry of hardware addresses (soft switches,
@@ -69,28 +68,29 @@ below the cc65 C stack:
 |--------|---------|---------|
 | Zero page | `$0080–$009E` | cc65 zero-page (above the monitor's usage) |
 | Text page | `$0400–$07FF` | 80-column display (aux = even cols, main = odd) |
-| Program | `$0800–$7000` | crt0 + code + rodata + data + bss (loads at `$0800`) |
-| **Shadow buffer** | `$7000–$777F` | linear 80×24 copy of the screen (see below) |
+| Program | `$0800–$6800` | crt0 + code + rodata + data + bss (loads at `$0800`) |
+| Alternate screen save | `$6800–$6F7F` | saved 80×24 display bytes |
+| Free RAM gap | `$7000–$777F` | unused space below the C stack |
 | C stack | `$7800–$8000` | 2 KB, grows down from `$8000` |
 
-The program image is a few KB, so the gap between it and the shadow buffer is
-large. The shadow buffer lives in that gap — above the linked image top
-(`$7000`) and below the stack (`$7800`) — so nothing else ever touches it.
+The program image loads at `$0800` and leaves a gap below the C stack. The
+alternate-screen save area starts at `$6800`; `$7000–$777F` is now just free RAM
+in that gap.
 
-## The shadow buffer
+## Reading the video page
 
 The real 80-column text page is split across two memory banks selected by the
-`PAGE2` soft switch (even columns in auxiliary memory, odd columns in main). An
-external monitor such as MAME's Lua cannot read both banks without toggling
-`PAGE2`, and doing that asynchronously races the running terminal and corrupts
-the display.
+`PAGE2` soft switch (even columns in auxiliary memory, odd columns in main).
+Most screen operations only write the text page. The few operations that must
+read current glyphs — insert/delete characters and alternate-screen save — call
+`read_row_glyphs(row, buf)`, which reads one row with two bank switches: even
+columns from AUX, odd columns from MAIN.
 
-To make the screen observable without any bank switching, `screen80.c` mirrors
-every visible glyph into a plain, linear, **non-banked** buffer at `$7000` (80
-bytes per row × 24 rows). Every operation that changes the screen — `scr_put`,
-the erases, the scrolls, and the insert/delete operations — updates the shadow
-too. The test harness reads `$7000` directly with no side effects. See
-[docs/80COLUMN.md](80COLUMN.md) and [docs/TESTING.md](TESTING.md).
+The external test monitor also reads the real text page. Reading both banks
+requires toggling `PAGE2`, so `screen_watch.lua` does it from MAME's machine
+frame notifier, where the CPU is paused between frames. It reads MAIN and AUX,
+restores the terminal's `PAGE2` state, and therefore does not race the running
+terminal. See [docs/80COLUMN.md](80COLUMN.md) and [docs/TESTING.md](TESTING.md).
 
 ## Why cc65 `-Cl` (static locals)
 
