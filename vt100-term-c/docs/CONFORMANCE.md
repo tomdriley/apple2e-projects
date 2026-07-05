@@ -48,7 +48,7 @@ in the private-use space ECMA-48 reserves with the `?` marker: DECCKM `?1`, DECO
 |-------|------------|-----------|
 | vttest (Thomas Dickey, Invisible Island) | Interactive/visual VT100..VT520 + xterm tester; a human eyeballs the screen | Not automatable against headless firmware. Use as a **catalog** of cases and categories to include. |
 | esctest2 (George Nachman + Thomas Dickey) | Python, data-driven, fully automatic; asserts via cursor-position reports, DECRQCRA rectangle checksums, and screen rectangle reads; tracks per-terminal known bugs with `knownBug` (xfail) | **Architectural template**: declarative cases, machine assertions, xfail. Mine its category list. Do not run directly: it drives a terminal over a pty and relies on DECRQCRA, which this firmware does not implement. |
-| pyte / libvterm / real xterm | Executable reference emulators that can generate expected screens | Deferred to issue #18 as a differential oracle. Not used in #13. |
+| pyte / libvterm / real xterm | Executable reference emulators that can generate expected screens | **pyte is implemented** as an independent differential oracle (issue #18) — see [Reference-oracle differential testing](#reference-oracle-differential-testing-issue-18) below. libvterm / xterm remain optional future references. |
 
 ## How we grade — automated probes, no human review
 
@@ -163,6 +163,100 @@ with every metric above plus a per-`basis` count. It exits nonzero on any
 REGRESSION or ERROR; `--strict` additionally fails on UNEXPECTED PASS to force the
 review.
 
+## Reference-oracle differential testing (issue #18)
+
+The authored `expect` values are the human-curated truth, but the same team wrote the
+firmware *and* the expectations, so a shared misreading of the spec would be invisible to
+the #13 runner. Issue #18 adds an **independent oracle**:
+[pyte](https://github.com/selectel/pyte), a pure-Python ECMA-48 screen model with no
+knowledge of our firmware or our authored expectations. It plugs in as another render
+target (`client/conformance/target_pyte.py`, behind the same `render(bytes) -> Screen`
+interface from `target_base.py`) and is driven by a separate entry point,
+`client/conformance/oracle.py`, so it never edits the #13 runner.
+
+For a case there are up to three screens: **E** (authored `expect`), **F** (firmware, via
+MAME) and **P** (pyte). That yields two comparisons on top of the runner's F-vs-E:
+
+| Comparison | Question | Needs MAME? | How |
+|-----------|----------|-------------|-----|
+| **P vs E** (audit) | Does an independent reference satisfy our authored expectations? | no | `python oracle.py --audit` (default) |
+| **F vs P** (differential) | Does the firmware agree with an independent reference, cell for cell? | yes | `python oracle.py --differential` |
+
+### P-vs-E audit (MAME-free)
+
+The audit needs neither MAME nor the firmware — only the corpus and `model.py` — so it
+runs anywhere and can gate every push. It runs `check(P, expect)` for each observable case
+and reads the verdict **through the case's `basis`**, because that fixes what a
+disagreement means:
+
+| `basis` | pyte satisfies `expect` | pyte disagrees |
+|---------|-------------------------|----------------|
+| `spec` | `spec-confirmed` — an independent spec-follower backs the golden | `spec-suspect` — a corpus bug *or* a firmware/spec question |
+| `profile` / `tolerance` / `degenerate` | `…-ok` — the reference agrees where it can | folded to a pyte-quirk when pyte itself is the outlier |
+| `unobservable` | `skip-unobservable` — never scored | — |
+
+The headline is **reference agreement** = `spec-confirmed / (spec-confirmed +
+spec-suspect)`: of the strict-spec cases pyte can actually judge, how many an independent
+reference confirms. A `spec-suspect` is the valuable output — either a mis-authored case or
+a genuine firmware/spec divergence — and each is triaged by hand.
+
+### F-vs-P differential
+
+The differential reuses the #13 runner's classifier verbatim: it renders **F** (MAME) and
+**P** (pyte), diffs the glyph + inverse + cursor planes with `diff_screens`, and feeds the
+result through the same `classify` / `summarize` that `runner.py` uses, so a divergence is
+labelled with the identical PASS / REGRESSION / XFAIL / UNEXPECTED-PASS / SKIP vocabulary
+and counted by the same `basis`-aware metrics. A `supported`/`spec` case where F and P
+disagree is a **REGRESSION**; an `unsupported` case where they agree is an **UNEXPECTED
+PASS** — exactly as in the authored-expect run, but judged against an independent reference
+instead of our own goldens.
+
+### pyte is not infallible
+
+Where pyte itself is wrong or incomplete, its verdict is discarded via
+`client/conformance/oracle_quirks.py` rather than raising a false regression. Catalogued
+pyte 0.8.2 quirks: NEL (`ESC E`) indexes without a carriage return; HPA (`` CSI ` ``) and
+SU/SD (`CSI S` / `CSI T`) unimplemented; SCOSC/SCORC (`CSI s` / `CSI u`) unimplemented; DCS
+strings render their payload instead of consuming it; DEC Special Graphics and alt-screen.
+Two channels are structurally invisible to pyte and handled through `Capabilities`
+(`reports=False, state=False`): the **wire `report` channel** (DSR/DA/DECRQSS replies) and
+**firmware state variables**. The differential additionally **skips** every `report` case,
+because pyte cannot model the wire *and* the MAME harness appends its own `ESC[6n` probe to
+each render — back-to-back with a case's own DSR it perturbs the firmware glyph plane in a
+way the case's real bytes never do, so a screen diff there is not a valid oracle.
+
+### What the first run found
+
+- **Reference agreement 98.5%** (131/133 strict-spec cases); the two `spec-suspect`s are
+  the firmware/spec question below and one mis-authored terminator.
+- **Differential: 3 REGRESSIONs, all one root cause** — the firmware homes the cursor to
+  (1,1) on erase-all (`ED` / `DECSED` with parameter `2`), while ECMA-48 §8.3.39 (ED) does
+  not move the cursor and pyte leaves it put. Handed to #13 to confirm intended (→ `basis:
+  profile`) versus a bug.
+- **A corpus authoring bug** — `osc-title-st-following-text` (and, masked by a DCS quirk,
+  `dcs-following-text-position`) encode the ST terminator so `model.decode` drops a byte
+  when literal text follows; the fix is to encode ST as `\x1b\x5c`.
+
+Design note: pyte **augments**, it does not replace. The issue's literal "generate the
+`expected` field from pyte" is deliberately rejected — that would discard the curated
+corpus and inherit pyte's quirks. `oracle.py` accepts N reference targets, so libvterm /
+xterm can be added later as drop-in cross-checks.
+
+```mermaid
+flowchart LR
+    CORP[JSON corpus] --> PT[PyteTarget: bytes -> P]
+    CORP --> MT[MameTarget: bytes -> F]
+    CORP --> EXP[authored expect E]
+    PT --> ORA{oracle.py}
+    MT --> ORA
+    EXP --> ORA
+    QUIRK[oracle_quirks] --> ORA
+    ORA -->|P vs E, by basis| AUDIT[audit: spec-confirmed / spec-suspect / quirk]
+    ORA -->|F vs P, runner classify| DIFF[differential: PASS / REGRESSION / XFAIL]
+    AUDIT --> OUT[build/oracle.json]
+    DIFF --> OUT
+```
+
 ## References
 
 - ECMA-48 5th edition: https://ecma-international.org/publications-and-standards/standards/ecma-48/
@@ -172,4 +266,4 @@ review.
 - DEC STD 070 (Video Systems Reference Manual, 1991) — via bitsavers
 - vttest: https://invisible-island.net/vttest/vttest.html
 - esctest2: https://github.com/ThomasDickey/esctest2
-- pyte (future oracle, #18): https://github.com/selectel/pyte
+- pyte (independent oracle, #18): https://github.com/selectel/pyte

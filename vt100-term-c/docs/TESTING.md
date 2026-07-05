@@ -146,6 +146,42 @@ It exercises the classifier against a built-in `fake` target and loads the real
 corpus, so a malformed case file or a broken classification rule fails fast
 without booting MAME.
 
+### Reference oracle — `conformance/oracle.py`
+
+Issue #18 adds an independent reference oracle ([pyte](https://github.com/selectel/pyte),
+pinned in `client/requirements.txt`) that cross-checks both the firmware and the authored
+corpus. The methodology is in
+[docs/CONFORMANCE.md](CONFORMANCE.md#reference-oracle-differential-testing-issue-18); this
+is how to run it.
+
+```sh
+pip install -r client/requirements.txt                       # one-time: pyte==0.8.2
+
+python client/conformance/oracle.py --audit                  # P-vs-E audit (default; no MAME)
+python client/conformance/oracle.py --differential           # F-vs-P vs headless MAME
+python client/conformance/oracle.py --selftest               # pyte-vs-pyte plumbing check (no MAME)
+python client/conformance/oracle.py --audit -k cursor        # filter by id/category
+python client/conformance/oracle.py --differential --json build/oracle-differential.json
+```
+
+- **`--audit`** (default) grades pyte against the authored `expect` — **no MAME,
+  sub-second** — so alongside `selftest.py` it is a cheap per-push gate. It exits nonzero
+  only when a strict-`spec` case turns up `spec-suspect` (an independent reference disagrees
+  with a golden), and writes the reference-agreement %, the `spec-suspect` list, and a
+  per-`basis` breakdown to `build/oracle.json`.
+- **`--differential`** boots MAME once (like the runner) and diffs the firmware screen
+  against pyte cell-for-cell, reusing the runner's classifier so outcomes read PASS /
+  REGRESSION / XFAIL / UNEXPECTED-PASS / SKIP. It writes `build/oracle-differential.json`
+  and exits nonzero on any REGRESSION — a divergence from an *independent* reference,
+  stronger than the authored-expect run. Needs `build/vt100.dsk` (run `make` first).
+- **`--selftest`** feeds every case through pyte twice and asserts zero diff — a fast,
+  MAME-free check that the diff/normalization plumbing is sound.
+
+pyte is never treated as infallible: known pyte gaps are declared in
+`client/conformance/oracle_quirks.py` and skipped, and the channels pyte cannot see (wire
+reports, firmware state) stay firmware-probe-only. See
+[docs/CONFORMANCE.md](CONFORMANCE.md#pyte-is-not-infallible).
+
 ## How the screen dumper stays out of the way
 
 `screen_watch.lua` reads the bank-split video page by toggling `PAGE2` from a
