@@ -231,7 +231,8 @@ way the case's real bytes never do, so a screen diff there is not a valid oracle
   the firmware/spec question below and one mis-authored terminator.
 - **Differential: 3 REGRESSIONs, all one root cause** — the firmware homes the cursor to
   (1,1) on erase-all (`ED` / `DECSED` with parameter `2`), while ECMA-48 §8.3.39 (ED) does
-  not move the cursor and pyte leaves it put. Handed to #13 to confirm intended (→ `basis:
+  not move the cursor and pyte leaves it put. A follow-up on `main` (tracked under epic
+  #14): confirm intended (→ `basis:
   profile`) versus a bug.
 - **A corpus authoring bug** — `osc-title-st-following-text` (and, masked by a DCS quirk,
   `dcs-following-text-position`) encode the ST terminator so `model.decode` drops a byte
