@@ -231,17 +231,21 @@ way the case's real bytes never do, so a screen diff there is not a valid oracle
   the firmware/spec question below and one mis-authored terminator.
 - **Differential: 3 REGRESSIONs, all one root cause** — the firmware homes the cursor to
   (1,1) on erase-all (`ED` / `DECSED` with parameter `2`), while ECMA-48 §8.3.39 (ED) does
-  not move the cursor and pyte leaves it put. A follow-up on `main` (tracked under epic
-  #14): confirm intended (→ `basis:
-  profile`) versus a bug.
+  not move the cursor and pyte leaves it put. This is a genuine firmware/spec
+  non-conformance, not a rendering dialect: ECMA-48 does **not** permit ED to move the
+  cursor, so it cannot simply be relabelled `basis: profile` (which is reserved for
+  ECMA-*permitted* visible degradations). A follow-up on `main` (tracked under epic #14)
+  should decide between fixing the firmware and documenting it as an intentional,
+  spec-deviating IIe-ism.
 - **A corpus authoring bug** — `osc-title-st-following-text` (and, masked by a DCS quirk,
   `dcs-following-text-position`) encode the ST terminator so `model.decode` drops a byte
   when literal text follows; the fix is to encode ST as `\x1b\x5c`.
 
 Design note: pyte **augments**, it does not replace. The issue's literal "generate the
 `expected` field from pyte" is deliberately rejected — that would discard the curated
-corpus and inherit pyte's quirks. `oracle.py` accepts N reference targets, so libvterm /
-xterm can be added later as drop-in cross-checks.
+corpus and inherit pyte's quirks. The differential is structured around a single
+`PyteTarget` today, but the diff/classify path is target-agnostic, so a second reference
+(libvterm / xterm) can be added later as a drop-in cross-check.
 
 ```mermaid
 flowchart LR
