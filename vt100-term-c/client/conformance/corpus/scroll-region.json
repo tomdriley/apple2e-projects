@@ -1,0 +1,338 @@
+[
+  {
+    "id": "scroll-decstbm-set-state",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / DECSTBM",
+    "input": "\\e[10;10H\\e[3;6r",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ],
+      "state": {
+        "scroll_top": 2,
+        "scroll_bot": 5
+      }
+    },
+    "notes": "DECSTBM sets 1-based rows 3..6 as 0-based internal margins 2..5 and homes the cursor."
+  },
+  {
+    "id": "scroll-decstbm-reset-state",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / DECSTBM",
+    "input": "\\e[3;6r\\e[r",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ],
+      "state": {
+        "scroll_top": 0,
+        "scroll_bot": 23
+      }
+    },
+    "notes": "DECSTBM with omitted parameters resets the scrolling region to the full 24-line screen."
+  },
+  {
+    "id": "scroll-lf-bottom-scrolls-region",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / DECSTBM; LF",
+    "input": "\\e[3;6r\\e[2;1HOUT-TOP\\e[7;1HOUT-BOT\\e[3;1HR3\\e[4;1HR4\\e[5;1HR5\\e[6;1HR6\\e[6;1H\\n",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          2,
+          1,
+          "OUT-TOP"
+        ],
+        [
+          3,
+          1,
+          "R4"
+        ],
+        [
+          4,
+          1,
+          "R5"
+        ],
+        [
+          5,
+          1,
+          "R6"
+        ],
+        [
+          6,
+          1,
+          "  "
+        ],
+        [
+          7,
+          1,
+          "OUT-BOT"
+        ]
+      ]
+    },
+    "notes": "LF at the bottom margin scrolls only rows 3..6 upward; rows outside the margins are untouched."
+  },
+  {
+    "id": "scroll-ind-bottom-scrolls-region",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / DECSTBM; IND",
+    "input": "\\e[3;6r\\e[2;1HOUT-TOP\\e[7;1HOUT-BOT\\e[3;1HI3\\e[4;1HI4\\e[5;1HI5\\e[6;1HI6\\e[6;1H\\eD",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          2,
+          1,
+          "OUT-TOP"
+        ],
+        [
+          3,
+          1,
+          "I4"
+        ],
+        [
+          4,
+          1,
+          "I5"
+        ],
+        [
+          5,
+          1,
+          "I6"
+        ],
+        [
+          6,
+          1,
+          "  "
+        ],
+        [
+          7,
+          1,
+          "OUT-BOT"
+        ]
+      ]
+    },
+    "notes": "IND at the bottom margin scrolls the active region up without disturbing lines outside it."
+  },
+  {
+    "id": "scroll-ri-top-scrolls-region",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / DECSTBM; RI",
+    "input": "\\e[3;6r\\e[2;1HOUT-TOP\\e[7;1HOUT-BOT\\e[3;1HR3\\e[4;1HR4\\e[5;1HR5\\e[6;1HR6\\e[3;1H\\eM",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          2,
+          1,
+          "OUT-TOP"
+        ],
+        [
+          3,
+          1,
+          "  "
+        ],
+        [
+          4,
+          1,
+          "R3"
+        ],
+        [
+          5,
+          1,
+          "R4"
+        ],
+        [
+          6,
+          1,
+          "R5"
+        ],
+        [
+          7,
+          1,
+          "OUT-BOT"
+        ]
+      ]
+    },
+    "notes": "RI at the top margin scrolls the active region down and leaves outside rows alone."
+  },
+  {
+    "id": "scroll-lf-inside-region-no-scroll",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / DECSTBM; LF",
+    "input": "\\e[3;6r\\e[3;1HA3\\e[4;1HA4\\e[5;1HA5\\e[6;1HA6\\e[4;1H\\n",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        1
+      ],
+      "rows": [
+        [
+          3,
+          1,
+          "A3"
+        ],
+        [
+          4,
+          1,
+          "A4"
+        ],
+        [
+          5,
+          1,
+          "A5"
+        ],
+        [
+          6,
+          1,
+          "A6"
+        ]
+      ]
+    },
+    "notes": "LF within the region but above the bottom margin moves the cursor down without scrolling."
+  },
+  {
+    "id": "scroll-ri-default-region-top",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / RI",
+    "input": "\\e[2;1HLINE-TWO\\e[1;1H\\eM",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "  "
+        ],
+        [
+          3,
+          1,
+          "LINE-TWO"
+        ]
+      ]
+    },
+    "notes": "Ported shell_test ri_scroll: RI at the top of the default full-screen region scrolls down."
+  },
+  {
+    "id": "scroll-ind-default-region-bottom",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / IND",
+    "input": "\\e[23;1HNEARBOT\\e[24;1H\\eD",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          22,
+          1,
+          "NEARBOT"
+        ]
+      ]
+    },
+    "notes": "Ported shell_test ind_scroll: IND at the bottom of the default region scrolls up."
+  },
+  {
+    "id": "scroll-statusbar-protected-region",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / DECSTBM",
+    "input": "\\e[24;1HSTATUSLINE\\e[1;23r\\e[1;1HL01\\r\\nL02\\r\\nL03\\r\\nL04\\r\\nL05\\r\\nL06\\r\\nL07\\r\\nL08\\r\\nL09\\r\\nL10\\r\\nL11\\r\\nL12\\r\\nL13\\r\\nL14\\r\\nL15\\r\\nL16\\r\\nL17\\r\\nL18\\r\\nL19\\r\\nL20\\r\\nL21\\r\\nL22\\r\\nL23\\r\\nL24\\r\\nL25\\r\\nL26\\r\\nL27\\r\\nL28\\r\\nL29\\r\\nL30",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          24,
+          1,
+          "STATUSLINE"
+        ]
+      ],
+      "has": [
+        "L30"
+      ]
+    },
+    "notes": "Ported shell_test statusbar: a 1..23 scroll region protects row 24 while the region scrolls."
+  },
+  {
+    "id": "scroll-su-pan-unsupported",
+    "category": "scroll-region",
+    "spec_ref": "ECMA-48 ?8.3.147 SU",
+    "input": "\\e[1;1HSU1\\e[2;1HSU2\\e[24;1HSU24\\e[S",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "SU2"
+        ],
+        [
+          23,
+          1,
+          "SU24"
+        ],
+        [
+          24,
+          1,
+          "    "
+        ]
+      ]
+    },
+    "notes": "SU should pan the page up one line; firmware currently consumes it without scrolling."
+  },
+  {
+    "id": "scroll-sd-pan-unsupported",
+    "category": "scroll-region",
+    "spec_ref": "ECMA-48 ?8.3.113 SD",
+    "input": "\\e[1;1HSD1\\e[2;1HSD2\\e[24;1HSD24\\e[T",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "    "
+        ],
+        [
+          2,
+          1,
+          "SD1"
+        ],
+        [
+          3,
+          1,
+          "SD2"
+        ]
+      ],
+      "absent": [
+        "SD24"
+      ]
+    },
+    "notes": "SD should pan the page down one line; firmware currently consumes it without scrolling."
+  },
+  {
+    "id": "scroll-decom-origin-unsupported",
+    "category": "scroll-region",
+    "spec_ref": "VT100-UG / DEC-private DECOM",
+    "input": "\\e[3;6r\\e[?6h\\e[1;1HORG",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "   "
+        ],
+        [
+          3,
+          1,
+          "ORG"
+        ]
+      ]
+    },
+    "notes": "With origin mode set, CUP 1;1 is relative to the top scroll margin; firmware ignores DECOM."
+  }
+]

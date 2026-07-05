@@ -20,20 +20,24 @@ static const unsigned rowbase[SCR_ROWS] = {
     0x0450, 0x04D0, 0x0550, 0x05D0, 0x0650, 0x06D0, 0x0750, 0x07D0
 };
 
-static unsigned char cur_col;
-static unsigned char cur_row;
+/* Cursor + screen state below is intentionally non-static: the conformance
+ * state probe (client/conformance, issue #13) reads these from RAM using the
+ * addresses ld65 records in build/vt100.map. Exporting them changes no code and
+ * keeps their fixed BSS addresses; it only adds them to the symbol table. */
+unsigned char cur_col;
+unsigned char cur_row;
 
 /* Cursor saved across an alternate-screen switch (DECSET ?1049). */
-static unsigned char saved_screen_col;
-static unsigned char saved_screen_row;
+unsigned char saved_screen_col;
+unsigned char saved_screen_row;
 
 /* Scroll region (0-based, inclusive). LF at the bottom margin and RI at the top
  * margin scroll only these rows; DECSTBM sets them. Default: the whole screen. */
-static unsigned char scroll_top = 0;
-static unsigned char scroll_bot = SCR_ROWS - 1;
+unsigned char scroll_top = 0;
+unsigned char scroll_bot = SCR_ROWS - 1;
 
 /* Current character attribute: 0 = normal, 1 = inverse (SGR 7). */
-static unsigned char cur_attr;
+unsigned char cur_attr;
 
 #define BANK_AUX()  (TXTPAGE2 = 0) /* PAGE2 on : CPU sees AUX $0400-$07FF */
 #define BANK_MAIN() (TXTPAGE1 = 0) /* PAGE2 off: CPU sees MAIN            */

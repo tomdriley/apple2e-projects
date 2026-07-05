@@ -1,0 +1,157 @@
+[
+  {
+    "id": "alt-47-restores-primary",
+    "category": "alt-screen",
+    "spec_ref": "VT100-UG DEC private mode 47 alternate screen",
+    "input": "\\e[3;5HPRIMARY47\\e[?47h\\e[2J\\e[1;1HALT47\\e[?47l",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          3,
+          5,
+          "PRIMARY47"
+        ]
+      ],
+      "absent": [
+        "ALT47"
+      ]
+    },
+    "notes": "Mode 47 saves the primary screen, uses an alternate buffer, and restores primary content on reset."
+  },
+  {
+    "id": "alt-1047-restores-primary",
+    "category": "alt-screen",
+    "spec_ref": "ctlseqs: DEC private mode 1047 alternate screen",
+    "input": "\\e[4;10HPRIMARY1047\\e[?1047h\\e[2J\\e[2;2HALT1047\\e[?1047l",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          4,
+          10,
+          "PRIMARY1047"
+        ]
+      ],
+      "absent": [
+        "ALT1047"
+      ]
+    },
+    "notes": "Mode 1047 restores the primary buffer after alternate-screen use."
+  },
+  {
+    "id": "alt-1049-restores-primary",
+    "category": "alt-screen",
+    "spec_ref": "ctlseqs: DEC private mode 1049 alternate screen",
+    "input": "\\e[5;15HPRIMARY1049\\e[?1049h\\e[2J\\e[3;3HALT1049\\e[?1049l",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          5,
+          15,
+          "PRIMARY1049"
+        ]
+      ],
+      "absent": [
+        "ALT1049"
+      ]
+    },
+    "notes": "Mode 1049 restores the primary buffer after alternate-screen use."
+  },
+  {
+    "id": "alt-47-inverse-does-not-leak",
+    "category": "alt-screen",
+    "spec_ref": "VT100-UG SGR; DEC private mode 47 alternate screen",
+    "input": "\\e[7m\\e[?47h\\e[?47l\\e[1;1HOK47",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "OK47"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          4,
+          "normal"
+        ]
+      ]
+    },
+    "notes": "Issue #2 guard: inverse video must not leak onto fresh text after an alt-screen round trip."
+  },
+  {
+    "id": "alt-1047-inverse-does-not-leak",
+    "category": "alt-screen",
+    "spec_ref": "VT100-UG SGR; ctlseqs: mode 1047 alternate screen",
+    "input": "\\e[7m\\e[?1047h\\e[?1047l\\e[1;1HOK1047",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "OK1047"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          6,
+          "normal"
+        ]
+      ]
+    },
+    "notes": "Issue #2 guard: inverse video must not leak through a 1047 alt-screen switch."
+  },
+  {
+    "id": "alt-1049-inverse-does-not-leak",
+    "category": "alt-screen",
+    "spec_ref": "VT100-UG SGR; ctlseqs: mode 1049 alternate screen",
+    "input": "\\e[7m\\e[?1049h\\e[?1049l\\e[1;1HOK1049",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "OK1049"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          6,
+          "normal"
+        ]
+      ]
+    },
+    "notes": "Issue #2 guard: inverse video must not leak through a 1049 alt-screen switch."
+  },
+  {
+    "id": "alt-1049-restores-cursor",
+    "category": "alt-screen",
+    "spec_ref": "ctlseqs: DEC private mode 1049 alternate screen",
+    "input": "\\e[6;20HPRI\\e[?1049h\\e[2J\\e[1;1HALT-CURSOR\\e[?1049lBACK",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          6,
+          20,
+          "PRIBACK"
+        ]
+      ],
+      "absent": [
+        "ALT-CURSOR"
+      ]
+    },
+    "notes": "Mode 1049 restores the primary cursor position as well as primary screen contents."
+  }
+]

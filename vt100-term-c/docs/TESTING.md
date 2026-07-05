@@ -1,13 +1,14 @@
 # Testing
 
 Every feature is verified by booting the terminal in **headless MAME** and
-checking the result over the serial socket. There are two harnesses, both
+checking the result over the serial socket. There are three harnesses, all
 CI-friendly (non-zero exit on failure).
 
 | Harness | Verifies | How |
 |---------|----------|-----|
 | `client/vt100_test.py` | Cursor motion, keyboard | The terminal's own position reports and transmitted bytes |
 | `client/shell_test.py` | Rendered screen from real shell output | A snapshot of the 80×24 screen |
+| `client/conformance/runner.py` | Spec conformance across the VT100/ECMA-48 feature space | A spec-derived corpus graded by video-RAM, state-variable, and wire probes |
 
 ## Cursor tests — `vt100_test.py`
 
@@ -89,6 +90,62 @@ SHELL_TESTS = [
 Outputs are chosen so a match proves the command's **output** rendered, not just
 the echoed keystrokes (e.g. `echo $((6*7))` → `42`).
 
+## Conformance suite — `conformance/runner.py`
+
+The conformance runner grades the firmware against a **spec-derived corpus** that
+spans the VT100/ECMA-48 feature space — including sequences the firmware does not
+implement yet, which are tracked as expected failures (xfail) so a conformance
+percentage can trend upward as features land. The methodology, the spec/reference
+map, and the external suites it draws from live in
+[docs/CONFORMANCE.md](CONFORMANCE.md); this section is how to run it.
+
+```sh
+python client/conformance/runner.py --target mame            # grade against headless MAME
+python client/conformance/runner.py --target mame -v         # print every case outcome live
+python client/conformance/runner.py -k cursor                # only ids/categories matching "cursor"
+python client/conformance/runner.py --list                   # list the corpus without running
+python client/conformance/runner.py --target mame --strict   # also fail on unexpected passes
+```
+
+It boots MAME once (like `shell_test.py`), streams each case's input with the
+windowed-lossless sender, waits for the screen to settle, then reads three
+automated oracle channels — the video-RAM glyph/inverse planes, the firmware
+state variables, and the terminal's wire replies — and classifies each case:
+
+| Declared `status` | Expectations met | Outcome |
+|-------------------|------------------|---------|
+| `supported` | yes | **PASS** |
+| `supported` | no | **REGRESSION** → non-zero exit |
+| `partial` / `unsupported` | no | **XFAIL** (expected gap) |
+| `partial` / `unsupported` | yes | **UNEXPECTED PASS** → review before promoting |
+| `basis: unobservable` (any status) | — | **SKIP** (effect not probeable; never scored) |
+| exception while rendering | — | **ERROR** → non-zero exit |
+
+The run prints per-category rollups and a metric suite — **behavioural
+compatibility** (relabel-invariant headline), **spec** and **profile
+conformance**, plus completeness / correctness and a per-`basis` count — and
+writes a machine report to `build/conformance.json` (override with `--json`).
+Each case carries a `basis` (`spec` | `profile` | `tolerance` | `degenerate` |
+`unobservable`) recording *what a pass proves*, which keeps the numbers honest;
+see [CONFORMANCE.md](CONFORMANCE.md) for the taxonomy and metric definitions.
+**CI exit code:** non-zero on any REGRESSION or ERROR; add `--strict` to also fail
+on UNEXPECTED PASS — use it to force stale `unsupported` cases through the
+promotion review once the firmware catches up.
+
+### Offline self-test — `conformance/selftest.py`
+
+The runner's machinery (input decoder, screen model, classifier, corpus loader)
+has a pure-Python self-test that needs **no emulator** and runs in well under a
+second, so it is the piece to run in CI on every push:
+
+```sh
+python client/conformance/selftest.py
+```
+
+It exercises the classifier against a built-in `fake` target and loads the real
+corpus, so a malformed case file or a broken classification rule fails fast
+without booting MAME.
+
 ## How the screen dumper stays out of the way
 
 `screen_watch.lua` reads the bank-split video page by toggling `PAGE2` from a
@@ -136,5 +193,47 @@ a label, a shell command (or a `printf` of raw escapes), and a list of checks.
 Prefer commands whose output differs from the typed text so a pass proves
 rendering. If your case sets a scroll region, the harness resets it between cases
 for you.
+
+**A conformance case** → add a JSON record to the matching
+`client/conformance/corpus/<category>.json`:
+
+```json
+{
+  "id": "cup-basic",
+  "category": "cursor-motion",
+  "spec_ref": "ECMA-48 §8.3.9 (CUP); VT100-UG §3",
+  "input": "\\e[2J\\e[8;20HX",
+  "status": "supported",
+  "expect": { "cursor": [8, 21], "rows": [[8, 20, "X"]] },
+  "notes": "Why this is the spec-correct result."
+}
+```
+
+- **`input`** uses a mini-decoder: `\e` = ESC, `\xNN` = one hex byte, plus
+  `\a \b \t \n \v \f \r \0` and `\\`. Bytes ≥ `0x80` are preserved (UTF-8 cases).
+- **`status`** is `supported`, `partial`, or `unsupported`. Author `expect` from
+  the **spec**, not from current firmware output: for a gap, the expected value is
+  what a conformant VT100 would do, so the case is a clean XFAIL that flips to a
+  PASS the day the feature lands.
+- **`basis`** (optional, default `spec`) records *what a pass proves* so it is
+  counted honestly: `spec` (a reference terminal would pass the same `expect`),
+  `profile` (a visible, documented IIe degradation), `tolerance` (an unimplemented
+  sequence absorbed as a no-op), `degenerate` (passes only because a default
+  coincides with the tested direction), or `unobservable` (effect not probeable →
+  SKIP). Leave it off for ordinary spec cases. See [CONFORMANCE.md](CONFORMANCE.md).
+- **`expect`** keys (all optional; only what you assert is checked):
+
+  | Key | Shape | Meaning |
+  |-----|-------|---------|
+  | `cursor` | `[row, col]` | 1-based cursor position (wire CPR / state probe) |
+  | `rows` / `cells` | `[[row, col, text], ...]` | `text` appears at `(row, col)` on the glyph plane |
+  | `has` / `absent` | `["text", ...]` | substring must / must not appear anywhere |
+  | `attr` | `[[row, col, len, kind]]` | inverse-plane span; `kind` is `inverse` or `normal` |
+  | `state` | `{ "var": value }` | firmware RAM variable equals `value` |
+  | `report` | `"\\e[...R"` | bytes the terminal must send back over the wire |
+
+Validate the case offline with `python client/conformance/selftest.py` (it loads
+and checks every corpus file), then grade it with
+`python client/conformance/runner.py --target mame -k <your-id>`.
 
 See [docs/HACKING.md](HACKING.md) for implementing the feature the test drives.

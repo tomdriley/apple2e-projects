@@ -1,0 +1,259 @@
+[
+  {
+    "id": "c0-bel-no-display-change",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 BEL; VT100-UG",
+    "input": "\\e[2J\\e[5;10HOK\\a",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          5,
+          10,
+          "OK"
+        ]
+      ],
+      "cursor": [
+        5,
+        12
+      ]
+    },
+    "notes": "BEL clicks the speaker and does not alter the glyph plane or cursor."
+  },
+  {
+    "id": "c0-bs-left-one-column",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 BS; VT100-UG",
+    "input": "\\e[2J\\e[5;10H\\b",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        9
+      ]
+    },
+    "notes": "BS moves the cursor one column left without erasing."
+  },
+  {
+    "id": "c0-bs-overwrite-no-erase",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 BS; VT100-UG",
+    "input": "\\e[2J\\e[5;10HAB\\bC",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          5,
+          10,
+          "AC"
+        ]
+      ],
+      "cursor": [
+        5,
+        12
+      ]
+    },
+    "notes": "BS permits overwriting the previous cell and does not erase by itself."
+  },
+  {
+    "id": "c0-bs-clamps-at-column-one",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 BS; VT100-UG",
+    "input": "\\e[2J\\e[5;1H\\b",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        1
+      ]
+    },
+    "notes": "BS at the left edge clamps at column 1."
+  },
+  {
+    "id": "c0-ht-from-column-one",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 HT; VT100-UG",
+    "input": "\\e[2J\\e[1;1H\\t",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        9
+      ]
+    },
+    "notes": "HT advances from column 1 to the next 8-column tab stop at column 9."
+  },
+  {
+    "id": "c0-ht-from-arbitrary-column",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 HT; VT100-UG",
+    "input": "\\e[2J\\e[7;12H\\t",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        7,
+        17
+      ]
+    },
+    "notes": "HT from an arbitrary column advances to the next 8-column tab stop."
+  },
+  {
+    "id": "c0-ht-clamps-at-right-edge",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 HT; VT100-UG",
+    "input": "\\e[2J\\e[9;78H\\t",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        9,
+        80
+      ]
+    },
+    "notes": "HT near the right edge clamps at column 80."
+  },
+  {
+    "id": "c0-cr-to-column-one",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 CR; VT100-UG",
+    "input": "\\e[2J\\e[6;20H\\r",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        6,
+        1
+      ]
+    },
+    "notes": "CR returns to column 1 on the same row."
+  },
+  {
+    "id": "c0-lf-down-one-row",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 LF; VT100-UG",
+    "input": "\\e[2J\\e[6;20H\\n",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        7,
+        20
+      ]
+    },
+    "notes": "LF moves down one row and preserves the column."
+  },
+  {
+    "id": "c0-lf-scrolls-at-bottom-margin",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 LF; VT100-UG",
+    "input": "\\e[2J\\e[23;1HONE\\e[24;1HTWO\\n",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          22,
+          1,
+          "ONE"
+        ],
+        [
+          23,
+          1,
+          "TWO"
+        ],
+        [
+          24,
+          1,
+          "   "
+        ]
+      ],
+      "cursor": [
+        24,
+        4
+      ]
+    },
+    "notes": "LF at the bottom margin scrolls content up and leaves a blank bottom line."
+  },
+  {
+    "id": "c0-vt-ignored",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 VT; VT100-UG",
+    "input": "\\e[2J\\e[5;10HVT\\v",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          5,
+          10,
+          "VT"
+        ]
+      ],
+      "cursor": [
+        6,
+        12
+      ]
+    },
+    "notes": "Spec-correct VT acts as LF (cursor down one row, column preserved); the firmware ignores VT and leaves the cursor in place, so this is an expected XFAIL until VT is implemented."
+  },
+  {
+    "id": "c0-ff-ignored",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 FF; VT100-UG",
+    "input": "\\e[2J\\e[5;10HFF\\f",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          5,
+          10,
+          "FF"
+        ]
+      ],
+      "cursor": [
+        6,
+        12
+      ]
+    },
+    "notes": "Spec-correct FF acts as LF (cursor down one row, column preserved); the firmware ignores FF and leaves the cursor in place, so this is an expected XFAIL until FF is implemented."
+  },
+  {
+    "id": "c0-so-ignored",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 SO; VT100-UG",
+    "input": "\\e[2J\\e[5;10HSO\\x0e",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          5,
+          10,
+          "SO"
+        ]
+      ],
+      "cursor": [
+        5,
+        12
+      ]
+    },
+    "notes": "With G1 left at ASCII (the default) SO invoking G1 shows identical glyphs, so ignoring SO renders exactly what the spec requires for this input."
+  },
+  {
+    "id": "c0-si-ignored",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §8.3 SI; VT100-UG",
+    "input": "\\e[2J\\e[5;10HSI\\x0f",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          5,
+          10,
+          "SI"
+        ]
+      ],
+      "cursor": [
+        5,
+        12
+      ]
+    },
+    "notes": "With G0 already the active set, SI invoking G0 shows identical glyphs, so ignoring SI renders exactly what the spec requires for this input."
+  }
+]

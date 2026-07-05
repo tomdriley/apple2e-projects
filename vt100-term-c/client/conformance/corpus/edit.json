@@ -1,0 +1,145 @@
+[
+  {
+    "id": "edit-ich-default-one",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.64 ICH",
+    "input": "\\e[6;1HABCDEFGH\\e[6;3H\\e[@",
+    "status": "supported",
+    "expect": {
+      "rows": [[6, 1, "AB CDEFGH"]]
+    },
+    "notes": "Default ICH inserts one blank and shifts the row right."
+  },
+  {
+    "id": "edit-ich-count-three",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.64 ICH",
+    "input": "\\e[6;1HABCDEFGH\\e[6;3H\\e[3@",
+    "status": "supported",
+    "expect": {
+      "rows": [[6, 1, "AB   CDEFGH"]]
+    },
+    "notes": "Ported shell ICH case: explicit count inserts blanks before shifting."
+  },
+  {
+    "id": "edit-ich-drops-right-edge",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.64 ICH",
+    "input": "\\e[5;75H123456\\e[5;78H\\e[4@",
+    "status": "supported",
+    "expect": {
+      "rows": [[5, 75, "123   "]]
+    },
+    "notes": "ICH shifts right within the row and drops cells that overflow column 80."
+  },
+  {
+    "id": "edit-dch-default-one",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.26 DCH",
+    "input": "\\e[7;1HABCDEFGH\\e[7;3H\\e[P",
+    "status": "supported",
+    "expect": {
+      "rows": [[7, 1, "ABDEFGH "]]
+    },
+    "notes": "Default DCH deletes one character, shifts left, and blanks the right edge."
+  },
+  {
+    "id": "edit-dch-count-three",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.26 DCH",
+    "input": "\\e[7;1HABCDEFGH\\e[7;3H\\e[3P",
+    "status": "supported",
+    "expect": {
+      "rows": [[7, 1, "ABFGH   "]]
+    },
+    "notes": "Ported shell DCH case: explicit count deletes three cells and pulls left."
+  },
+  {
+    "id": "edit-ech-default-one",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.38 ECH",
+    "input": "\\e[8;1HABCDEFGH\\e[8;3H\\e[X",
+    "status": "supported",
+    "expect": {
+      "rows": [[8, 1, "AB DEFGH"]]
+    },
+    "notes": "Default ECH overwrites one cell with a blank without shifting."
+  },
+  {
+    "id": "edit-ech-count-three",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.38 ECH",
+    "input": "\\e[8;1HABCDEFGH\\e[8;3H\\e[3X",
+    "status": "supported",
+    "expect": {
+      "rows": [[8, 1, "AB   FGH"]]
+    },
+    "notes": "Ported shell ECH case: explicit count erases in place without shifting."
+  },
+  {
+    "id": "edit-il-default-one",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.67 IL",
+    "input": "\\e[10;1HLINE-A\\e[11;1HLINE-B\\e[10;1H\\e[L",
+    "status": "supported",
+    "expect": {
+      "rows": [[10, 1, "      "], [11, 1, "LINE-A"], [12, 1, "LINE-B"]]
+    },
+    "notes": "Ported shell IL case: default inserts one blank line and pushes down."
+  },
+  {
+    "id": "edit-il-count-two",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.67 IL",
+    "input": "\\e[4;1HONE\\e[5;1HTWO\\e[6;1HTHREE\\e[4;1H\\e[2L",
+    "status": "supported",
+    "expect": {
+      "rows": [[4, 1, "     "], [5, 1, "     "], [6, 1, "ONE"], [7, 1, "TWO"], [8, 1, "THREE"]]
+    },
+    "notes": "Explicit IL count inserts multiple blank lines before existing rows."
+  },
+  {
+    "id": "edit-il-scroll-region",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.67 IL; DECSTBM",
+    "input": "\\e[2;1HOUT-TOP\\e[3;1HR3\\e[4;1HR4\\e[5;1HR5\\e[6;1HR6\\e[7;1HOUT-BOT\\e[3;6r\\e[4;1H\\e[L",
+    "status": "supported",
+    "expect": {
+      "rows": [[2, 1, "OUT-TOP"], [3, 1, "R3"], [4, 1, "  "], [5, 1, "R4"], [6, 1, "R5"], [7, 1, "OUT-BOT"]]
+    },
+    "notes": "IL inside DECSTBM pushes only within rows 3 through 6 and drops the region bottom."
+  },
+  {
+    "id": "edit-dl-default-one",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.32 DL",
+    "input": "\\e[14;1HKEEP1\\e[15;1HGONE1\\e[16;1HKEEP2\\e[15;1H\\e[M",
+    "status": "supported",
+    "expect": {
+      "rows": [[14, 1, "KEEP1"], [15, 1, "KEEP2"], [16, 1, "     "]]
+    },
+    "notes": "Ported shell DL case: default deletes one line and pulls following lines up."
+  },
+  {
+    "id": "edit-dl-count-two",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.32 DL",
+    "input": "\\e[18;1HROW-A\\e[19;1HROW-B\\e[20;1HROW-C\\e[21;1HROW-D\\e[18;1H\\e[2M",
+    "status": "supported",
+    "expect": {
+      "rows": [[18, 1, "ROW-C"], [19, 1, "ROW-D"], [20, 1, "     "], [21, 1, "     "]]
+    },
+    "notes": "Explicit DL count removes multiple lines and blanks at the bottom of the affected area."
+  },
+  {
+    "id": "edit-dl-scroll-region",
+    "category": "edit",
+    "spec_ref": "ECMA-48 §8.3.32 DL; DECSTBM",
+    "input": "\\e[2;1HOUT-TOP\\e[3;1HR3\\e[4;1HR4\\e[5;1HR5\\e[6;1HR6\\e[7;1HOUT-BOT\\e[3;6r\\e[4;1H\\e[M",
+    "status": "supported",
+    "expect": {
+      "rows": [[2, 1, "OUT-TOP"], [3, 1, "R3"], [4, 1, "R5"], [5, 1, "R6"], [6, 1, "  "], [7, 1, "OUT-BOT"]]
+    },
+    "notes": "DL inside DECSTBM pulls only within rows 3 through 6 and blanks the region bottom."
+  }
+]

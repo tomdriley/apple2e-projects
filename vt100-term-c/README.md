@@ -83,12 +83,15 @@ The Apple becomes a login console for Linux. On real hardware, use
 .venv/Scripts/python.exe client/vt100_test.py --keys     # keyboard → serial
 .venv/Scripts/python.exe client/vt100_test.py --keys --app  # application cursor keys
 .venv/Scripts/python.exe client/shell_test.py            # real WSL bash → screen render
+.venv/Scripts/python.exe client/conformance/runner.py --target mame  # spec conformance corpus
 ```
 
 The suites boot the terminal in headless MAME and check the results over the
 serial socket — cursor tests via the terminal's own position reports, shell
-tests by reading a snapshot of the rendered 80×24 screen. See
-[docs/TESTING.md](docs/TESTING.md).
+tests by reading a snapshot of the rendered 80×24 screen. The conformance runner
+grades a spec-derived corpus of the VT100/ECMA-48 feature space and tracks
+not-yet-supported sequences as expected failures. See
+[docs/TESTING.md](docs/TESTING.md) and [docs/CONFORMANCE.md](docs/CONFORMANCE.md).
 
 ## Repository layout
 
@@ -118,6 +121,7 @@ vt100-term-c/
 | [docs/SERIAL.md](docs/SERIAL.md) | The 6551 driver, slot detection, ring buffer, flow control, overrun nuances |
 | [docs/BRIDGE.md](docs/BRIDGE.md) | The WSL bash bridge (pywinpty/ConPTY), transports, real hardware |
 | [docs/TESTING.md](docs/TESTING.md) | The MAME test harnesses and **how to add a test** |
+| [docs/CONFORMANCE.md](docs/CONFORMANCE.md) | The spec-derived conformance corpus: standards map, external-suite survey, probe methodology, xfail model |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Where scroll time goes, the ~80-cyc/byte copy loop, benchmark-vs-assembly cross-check |
 | [docs/HACKING.md](docs/HACKING.md) | **How to add an escape sequence or screen op**, cc65 gotchas, performance |
 | [docs/LESSONS.md](docs/LESSONS.md) | Design decisions and the bugs that shaped them |
