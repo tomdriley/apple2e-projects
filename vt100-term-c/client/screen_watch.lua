@@ -1,40 +1,29 @@
--- Continuously snapshot the Apple IIe terminal screen to build/screen.txt so the
--- Python test harness can assert what the terminal rendered.
+-- Snapshot the Apple IIe 80-column screen to build/screen.txt by decoding the
+-- emulated video PIXELS -- no firmware $7000 shadow buffer required.
 --
--- The real 80-column text page is split across two memory banks selected by the
--- PAGE2 soft switch, which cannot be read externally without toggling PAGE2 and
--- racing the running terminal. Instead, the terminal firmware mirrors every
--- glyph into a plain, linear, non-banked buffer at $7000 (80 bytes per row, 24
--- rows). We just read that -- no bank switching, no side effects on the machine.
--- Written to a temp file then renamed so readers never see a partial file.
-local SHADOW = 0x7000
+-- In 80-column text mode the screen is a clean 560x192 on/off image (7x8 px per
+-- cell). The firmware draws no cursor and never uses the flashing character
+-- range, so every cell is a stable bitmap: we fingerprint each cell
+-- (client/screen_pixels.lua) and map it to a character with the generated
+-- client/glyphs80.lua table. This replaces the old shadow read, so the firmware
+-- no longer has to mirror every glyph into RAM at $7000.
+--
+-- MAME's pixel bitmap can briefly lag the CPU during a repaint, but the Python
+-- harness waits for build/screen.txt to stop changing before it asserts, so a
+-- transient half-drawn frame is superseded before it is read. We therefore just
+-- publish every snapshot (like the old shadow reader did) -- crucially we must
+-- NOT suppress writes while the screen is in motion, or a fast scroll would leave
+-- screen.txt stale and the harness would "settle" on old content.
+local M = dofile("client/screen_pixels.lua")
+local GLYPHS = dofile("client/glyphs80.lua")
 
 local function snapshot()
-    local mem = manager.machine.devices[":maincpu"].spaces["program"]
-    local parts = {}
-    for r = 0, 23 do
-        local base = SHADOW + r * 80
-        local s = {}
-        for c = 0, 79 do
-            local raw = mem:read_u8(base + c)
-            local b
-            if raw >= 0x80 then
-                b = raw & 0x7f           -- normal high-bit ASCII
-            elseif raw < 0x20 then
-                b = raw + 0x40           -- inverse upper case ($00-$1F -> @A-Z...)
-            else
-                b = raw                  -- inverse space/digit/symbol ($20-$3F)
-            end
-            if b < 0x20 or b == 0x7f then b = 0x20 end
-            s[#s + 1] = string.char(b)
-        end
-        parts[#parts + 1] = (table.concat(s)):gsub("%s+$", "")
-    end
-    local text = table.concat(parts, "\n") .. "\n"
-    -- Write in one shot (truncating). We deliberately do NOT use a temp file +
-    -- os.rename: on Windows rename won't overwrite, and os.remove throws if the
-    -- reader has the file open. A rare partial read is harmless (the harness
-    -- waits for the screen to settle and retries).
+    local scr = M.screen()
+    if not scr then return end
+    local buf = scr:pixels()
+    local text = M.decode(buf, scr.width, GLYPHS)
+    -- Write in one shot (truncating). A rare partial read is harmless: the
+    -- harness waits for the screen to settle and retries.
     local f = io.open("build/screen.txt", "w")
     if f then
         f:write(text)
@@ -47,5 +36,5 @@ _watch_sub = emu.add_machine_frame_notifier(function()
     frames = frames + 1
     -- pcall so a transient file-lock error can never kill the notifier (which
     -- would freeze screen.txt for the rest of the run).
-    if frames % 15 == 0 then pcall(snapshot) end  -- ~4 Hz
+    if frames % 15 == 0 then pcall(snapshot) end   -- ~4 Hz, matches shadow reader
 end)
