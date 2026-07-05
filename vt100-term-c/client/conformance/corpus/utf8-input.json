@@ -1,0 +1,107 @@
+[
+  {
+    "id": "utf8-eacute-sentinel-column",
+    "category": "utf8-input",
+    "spec_ref": "issue #11 UTF-8 multibyte input",
+    "input": "\\xc3\\xa9S",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          2,
+          "S"
+        ]
+      ],
+      "absent": [
+        "C)"
+      ]
+    },
+    "notes": "Fragile issue #11 xfail: UTF-8 e-acute should occupy one display column before the ASCII sentinel."
+  },
+  {
+    "id": "utf8-euro-sentinel-column",
+    "category": "utf8-input",
+    "spec_ref": "issue #11 UTF-8 multibyte input",
+    "input": "\\xe2\\x82\\xacE",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          2,
+          "E"
+        ]
+      ],
+      "absent": [
+        "b,"
+      ]
+    },
+    "notes": "Fragile issue #11 xfail: UTF-8 euro sign should occupy one column; masked bytes may render as b/comma garbage."
+  },
+  {
+    "id": "utf8-grinning-sentinel-column",
+    "category": "utf8-input",
+    "spec_ref": "issue #11 UTF-8 multibyte input",
+    "input": "\\xf0\\x9f\\x98\\x80G",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          2,
+          "G"
+        ]
+      ],
+      "absent": [
+        "p"
+      ]
+    },
+    "notes": "Fragile issue #11 xfail: four-byte UTF-8 should be one glyph column; masked leading byte may render as p."
+  },
+  {
+    "id": "utf8-copyright-sentinel-column",
+    "category": "utf8-input",
+    "spec_ref": "issue #11 UTF-8 multibyte input",
+    "input": "\\xc2\\xa9C",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          2,
+          "C"
+        ]
+      ],
+      "absent": [
+        "B)"
+      ]
+    },
+    "notes": "Fragile issue #11 xfail: UTF-8 copyright sign should occupy one display column before the sentinel."
+  },
+  {
+    "id": "utf8-eacute-between-ascii",
+    "category": "utf8-input",
+    "spec_ref": "issue #11 UTF-8 multibyte input",
+    "input": "A\\xc3\\xa9Z",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "A"
+        ],
+        [
+          1,
+          3,
+          "Z"
+        ]
+      ],
+      "absent": [
+        "AC)"
+      ]
+    },
+    "notes": "Fragile issue #11 xfail: ASCII following a two-byte UTF-8 character should land after one glyph column."
+  }
+]

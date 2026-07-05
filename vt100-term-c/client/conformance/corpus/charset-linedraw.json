@@ -1,0 +1,156 @@
+[
+  {
+    "id": "charset-corners-fold",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS DEC Special Graphics; issue #12",
+    "input": "\\e(0lmkj",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "++++"
+        ]
+      ]
+    },
+    "notes": "DEC corner glyphs fold to ASCII plus signs on the IIe."
+  },
+  {
+    "id": "charset-horizontal-fold",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS DEC Special Graphics; issue #12",
+    "input": "\\e(0qqqq",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "----"
+        ]
+      ]
+    },
+    "notes": "DEC horizontal line q folds to ASCII hyphen."
+  },
+  {
+    "id": "charset-vertical-fold",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS DEC Special Graphics; issue #12",
+    "input": "\\e(0xxx",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "|||"
+        ]
+      ]
+    },
+    "notes": "DEC vertical line x folds to ASCII vertical bar."
+  },
+  {
+    "id": "charset-box-fragment-fold",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS DEC Special Graphics; issue #12",
+    "input": "\\e(0lqqk\\r\\nx  x\\r\\nmqqj",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "+--+"
+        ],
+        [
+          2,
+          1,
+          "|  |"
+        ],
+        [
+          3,
+          1,
+          "+--+"
+        ]
+      ]
+    },
+    "notes": "A small ACS box renders as the documented ASCII +-| approximation."
+  },
+  {
+    "id": "charset-tees-cross-fold",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS DEC Special Graphics; issue #12",
+    "input": "\\e(0ntuvw",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "+++++"
+        ]
+      ]
+    },
+    "notes": "The DEC cross and tee glyphs all fold to ASCII plus signs."
+  },
+  {
+    "id": "charset-unmapped-passthrough",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS DEC Special Graphics; issue #12",
+    "input": "\\e(0abc",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "abc"
+        ]
+      ]
+    },
+    "notes": "Unmapped bytes in the selected DEC graphics set pass through unchanged."
+  },
+  {
+    "id": "charset-designate-print-reset",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS DEC Special Graphics; issue #12",
+    "input": "\\e(0lqk\\e(BABC",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "+-+ABC"
+        ]
+      ]
+    },
+    "notes": "Designate DEC graphics, print folded glyphs, then reset G0 to ASCII."
+  },
+  {
+    "id": "charset-ascii-after-reset",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS DEC Special Graphics; issue #12",
+    "input": "\\e(0qq\\e(Bqxlm",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "--qxlm"
+        ]
+      ]
+    },
+    "notes": "After ESC(B, q/x/l/m render as ordinary ASCII letters again."
+  }
+]

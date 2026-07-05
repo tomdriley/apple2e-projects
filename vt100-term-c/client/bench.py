@@ -246,6 +246,15 @@ class Terminal:
         with self._lock:
             self._buf.clear()
 
+    def peek(self):
+        """Return a copy of the bytes drained from the terminal so far.
+
+        The conformance MameTarget uses this to capture wire read-back (the DA
+        reply, the DSR/CPR) after a windowed send, without disturbing the drain
+        thread. Read-only; the benchmark path does not use it."""
+        with self._lock:
+            return bytes(self._buf)
+
     def wait_cpr(self, timeout=OP_TIMEOUT):
         deadline = time.perf_counter() + timeout
         while time.perf_counter() < deadline:

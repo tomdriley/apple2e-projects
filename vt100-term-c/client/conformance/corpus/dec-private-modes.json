@@ -1,0 +1,219 @@
+[
+  {
+    "id": "mode-decckm-set-app-cursor",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECCKM",
+    "input": "\\e[?1h",
+    "status": "supported",
+    "expect": {
+      "state": {
+        "app_cursor": 1
+      }
+    },
+    "notes": "DECSET ?1 enables application cursor-key mode."
+  },
+  {
+    "id": "mode-decckm-reset-app-cursor",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECCKM",
+    "input": "\\e[?1h\\e[?1l",
+    "status": "supported",
+    "expect": {
+      "state": {
+        "app_cursor": 0
+      }
+    },
+    "notes": "DECRST ?1 disables application cursor-key mode."
+  },
+  {
+    "id": "mode-decckm-toggle-app-cursor",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECCKM",
+    "input": "\\e[?1h\\e[?1l\\e[?1h",
+    "status": "supported",
+    "expect": {
+      "state": {
+        "app_cursor": 1
+      }
+    },
+    "notes": "Repeated DECCKM changes leave the final application-cursor state observable."
+  },
+  {
+    "id": "mode-decawm-reset-no-wrap",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECAWM",
+    "input": "\\e[?7l\\e[1;78HABCDE",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          78,
+          "ABE"
+        ],
+        [
+          2,
+          1,
+          "   "
+        ]
+      ]
+    },
+    "notes": "DECRST ?7 disables autowrap, so characters past column 80 stay clamped on the last column; firmware always wraps."
+  },
+  {
+    "id": "mode-decawm-reset-at-last-column",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECAWM",
+    "input": "\\e[?7l\\e[1;80HXY",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          80,
+          "Y"
+        ],
+        [
+          2,
+          1,
+          "   "
+        ]
+      ]
+    },
+    "notes": "With autowrap reset, repeated printing at column 80 replaces the last cell instead of wrapping."
+  },
+  {
+    "id": "mode-decawm-set-wraps",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECAWM",
+    "input": "\\e[?7h\\e[1;78HABCDE",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "rows": [
+        [
+          1,
+          78,
+          "ABC"
+        ],
+        [
+          2,
+          1,
+          "DE"
+        ]
+      ]
+    },
+    "notes": "DECSET ?7 enables autowrap; the firmware wraps at column 80, matching autowrap-on. The unimplemented direction is disabling autowrap, tracked by mode-decawm-reset-no-wrap."
+  },
+  {
+    "id": "mode-decom-set-origin-relative",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECOM",
+    "input": "\\e[3;6r\\e[?6h\\e[1;1HORG",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "   "
+        ],
+        [
+          3,
+          1,
+          "ORG"
+        ]
+      ]
+    },
+    "notes": "DECSET ?6 makes CUP row 1 relative to the scroll-region top; firmware ignores origin mode."
+  },
+  {
+    "id": "mode-decom-reset-absolute",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECOM",
+    "input": "\\e[3;6r\\e[?6h\\e[?6l\\e[1;1HABS",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "ABS"
+        ]
+      ]
+    },
+    "notes": "DECRST ?6 selects absolute origin, the firmware default, so CUP addresses absolute coordinates as the spec requires. The relative-origin direction (?6h) is tracked by mode-decom-set-origin-relative."
+  },
+  {
+    "id": "mode-dectcem-hide-benign",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECTCEM",
+    "input": "\\e[?25lHIDDEN-STILL-TEXT",
+    "status": "supported",
+    "basis": "unobservable",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "HIDDEN-STILL-TEXT"
+        ]
+      ]
+    },
+    "notes": "DECTCEM ?25l hides the cursor, which does not alter the glyph plane; the observable spec effect is that following text still renders, which the firmware does. Cursor visibility itself is not probeable."
+  },
+  {
+    "id": "mode-dectcem-show-benign",
+    "category": "dec-private-modes",
+    "spec_ref": "VT100-UG / DEC-private DECTCEM",
+    "input": "\\e[?25l\\e[?25hSHOWN-STILL-TEXT",
+    "status": "supported",
+    "basis": "unobservable",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "SHOWN-STILL-TEXT"
+        ]
+      ]
+    },
+    "notes": "DECTCEM ?25h shows the cursor; the observable spec effect is that following text still renders, which the firmware does. Cursor visibility itself is not probeable."
+  },
+  {
+    "id": "mode-irm-set-inserts-printing",
+    "category": "dec-private-modes",
+    "spec_ref": "ECMA-48 ?8.3.x IRM",
+    "input": "\\e[1;1HABCDE\\e[1;3H\\e[4hZ",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "ABZCDE"
+        ]
+      ]
+    },
+    "notes": "IRM set makes printable characters insert and shift existing cells right; firmware replaces instead."
+  },
+  {
+    "id": "mode-irm-reset-replaces-printing",
+    "category": "dec-private-modes",
+    "spec_ref": "ECMA-48 ?8.3.x IRM",
+    "input": "\\e[4h\\e[4l\\e[1;1HABCDE\\e[1;3HZ",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "ABZDE"
+        ]
+      ]
+    },
+    "notes": "IRM reset selects replacement mode, the firmware default, so printing overwrites in place as the spec requires. The insert direction (IRM set) is tracked by mode-irm-set-inserts-printing."
+  }
+]

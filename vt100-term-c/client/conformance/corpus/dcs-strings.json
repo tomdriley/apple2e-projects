@@ -1,0 +1,65 @@
+[
+  {
+    "id": "dcs-decrqss-sgr-absent",
+    "category": "dcs-strings",
+    "spec_ref": "ctlseqs: DCS DECRQSS",
+    "input": "\\eP$q m\\e\\",
+    "status": "unsupported",
+    "expect": {
+      "absent": [
+        "$q m",
+        "q m"
+      ]
+    },
+    "notes": "Issue #3: DECRQSS DCS payload bytes should not be displayed."
+  },
+  {
+    "id": "dcs-sixel-payload-absent",
+    "category": "dcs-strings",
+    "spec_ref": "ctlseqs: DCS sixel",
+    "input": "\\ePqSIXELPAYLOAD\\e\\",
+    "status": "unsupported",
+    "expect": {
+      "absent": [
+        "SIXELPAYLOAD",
+        "qSIXELPAYLOAD"
+      ]
+    },
+    "notes": "Issue #3: DCS sixel-style payloads should not leak to the character display."
+  },
+  {
+    "id": "dcs-following-text-position",
+    "category": "dcs-strings",
+    "spec_ref": "ctlseqs: DCS string control",
+    "input": "\\ePqPAYLOAD\\e\\DONE",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "DONE"
+        ]
+      ],
+      "absent": [
+        "PAYLOAD",
+        "qPAYLOAD"
+      ]
+    },
+    "notes": "Issue #3: text after a DCS should render where the DCS began, with no payload leakage."
+  },
+  {
+    "id": "dcs-private-payload-absent",
+    "category": "dcs-strings",
+    "spec_ref": "ctlseqs: DCS private string",
+    "input": "\\eP+qPRIVATE\\e\\",
+    "status": "unsupported",
+    "expect": {
+      "absent": [
+        "PRIVATE",
+        "+qPRIVATE"
+      ]
+    },
+    "notes": "Issue #3: private DCS strings are not implemented and their payload should remain off-screen."
+  }
+]

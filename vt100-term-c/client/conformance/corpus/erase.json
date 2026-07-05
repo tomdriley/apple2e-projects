@@ -1,0 +1,350 @@
+[
+  {
+    "id": "erase-ed-default-to-end",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.39 ED",
+    "input": "\\e[2;1HAAAAA11111\\e[3;1HBBBBB22222\\e[4;1HCCCCC33333\\e[3;6H\\e[J",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          2,
+          1,
+          "AAAAA11111"
+        ],
+        [
+          3,
+          1,
+          "BBBBB"
+        ]
+      ],
+      "cells": [
+        [
+          3,
+          6,
+          "     "
+        ],
+        [
+          4,
+          1,
+          "          "
+        ]
+      ]
+    },
+    "notes": "Default ED parameter erases from cursor through end of display."
+  },
+  {
+    "id": "erase-ed-zero-to-end",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.39 ED",
+    "input": "\\e[5;1HLEFT-RIGHT\\e[6;1HNEXT-LINE\\e[5;4H\\e[0J",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          5,
+          1,
+          "LEF"
+        ]
+      ],
+      "cells": [
+        [
+          5,
+          4,
+          "        "
+        ],
+        [
+          6,
+          1,
+          "         "
+        ]
+      ]
+    },
+    "notes": "Explicit ED 0 is the same erase-to-end operation as the default."
+  },
+  {
+    "id": "erase-ed-one-to-start",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.39 ED",
+    "input": "\\e[6;1HTOP-KEEP\\e[7;1HLEFT-CLEAR\\e[8;1HBOTTOMKEEP\\e[7;6H\\e[1J",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          7,
+          7,
+          "LEAR"
+        ],
+        [
+          8,
+          1,
+          "BOTTOMKEEP"
+        ]
+      ],
+      "cells": [
+        [
+          6,
+          1,
+          "        "
+        ],
+        [
+          7,
+          1,
+          "      "
+        ]
+      ]
+    },
+    "notes": "ED 1 erases from start of display through the cursor cell."
+  },
+  {
+    "id": "erase-ed-two-all",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.39 ED",
+    "input": "\\e[2;1HERASE-TOP\\e[3;1HERASE-MID\\e[4;1HERASE-BOT\\e[3;5H\\e[2J",
+    "status": "supported",
+    "expect": {
+      "cells": [
+        [
+          2,
+          1,
+          "         "
+        ],
+        [
+          3,
+          1,
+          "         "
+        ],
+        [
+          4,
+          1,
+          "         "
+        ]
+      ],
+      "absent": [
+        "ERASE-TOP",
+        "ERASE-MID",
+        "ERASE-BOT"
+      ]
+    },
+    "notes": "ED 2 clears the display; no rows retain prefilled text."
+  },
+  {
+    "id": "erase-el-default-to-end",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.41 EL",
+    "input": "\\e[9;1HABCDE12345\\e[10;1HKEEP-LINE\\e[9;6H\\e[K",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          9,
+          1,
+          "ABCDE"
+        ],
+        [
+          10,
+          1,
+          "KEEP-LINE"
+        ]
+      ],
+      "cells": [
+        [
+          9,
+          6,
+          "     "
+        ]
+      ]
+    },
+    "notes": "Default EL parameter erases from cursor through end of line."
+  },
+  {
+    "id": "erase-el-zero-to-end",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.41 EL",
+    "input": "\\e[11;1HLEFT:RIGHT\\e[12;1HUNCHANGED\\e[11;6H\\e[0K",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          11,
+          1,
+          "LEFT:"
+        ],
+        [
+          12,
+          1,
+          "UNCHANGED"
+        ]
+      ],
+      "cells": [
+        [
+          11,
+          6,
+          "     "
+        ]
+      ]
+    },
+    "notes": "Explicit EL 0 is the same erase-to-end-of-line operation as the default."
+  },
+  {
+    "id": "erase-el-one-to-start",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.41 EL",
+    "input": "\\e[13;1HABCDE12345\\e[14;1HKEEP-ROW\\e[13;6H\\e[1K",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          13,
+          7,
+          "2345"
+        ],
+        [
+          14,
+          1,
+          "KEEP-ROW"
+        ]
+      ],
+      "cells": [
+        [
+          13,
+          1,
+          "      "
+        ]
+      ]
+    },
+    "notes": "EL 1 erases from start of line through the cursor cell."
+  },
+  {
+    "id": "erase-el-two-whole-line",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.41 EL",
+    "input": "\\e[15;1HDELETE-ME\\e[16;1HKEEP-ME\\e[15;4H\\e[2K",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          16,
+          1,
+          "KEEP-ME"
+        ]
+      ],
+      "cells": [
+        [
+          15,
+          1,
+          "         "
+        ]
+      ]
+    },
+    "notes": "EL 2 erases the whole current line without touching adjacent rows."
+  },
+  {
+    "id": "erase-decsed-default-to-end",
+    "category": "erase",
+    "spec_ref": "VT220-RM DECSED (DEC-private selective erase)",
+    "input": "\\e[17;1HSEL-AAAA\\e[18;1HSEL-BBBB\\e[17;5H\\e[?J",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "rows": [
+        [
+          17,
+          1,
+          "SEL-"
+        ]
+      ],
+      "cells": [
+        [
+          17,
+          5,
+          "    "
+        ],
+        [
+          18,
+          1,
+          "        "
+        ]
+      ]
+    },
+    "notes": "With no DECSCA-protected cells (the firmware has none), DECSED erases to display end identically to ED, matching the spec-correct selective erase for this input."
+  },
+  {
+    "id": "erase-decsed-two-all",
+    "category": "erase",
+    "spec_ref": "VT220-RM DECSED (DEC-private selective erase)",
+    "input": "\\e[19;1HSEL-TOP\\e[20;1HSEL-BOT\\e[19;4H\\e[?2J",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "cells": [
+        [
+          19,
+          1,
+          "       "
+        ],
+        [
+          20,
+          1,
+          "       "
+        ]
+      ]
+    },
+    "notes": "With no DECSCA-protected cells, DECSED 2 clears the whole display identically to ED 2, matching the spec-correct selective erase for this input."
+  },
+  {
+    "id": "erase-decsel-default-to-end",
+    "category": "erase",
+    "spec_ref": "VT220-RM DECSEL (DEC-private selective erase)",
+    "input": "\\e[21;1HSEL-EL-AAA\\e[22;1HKEEP-DECSEL\\e[21;5H\\e[?K",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "rows": [
+        [
+          21,
+          1,
+          "SEL-"
+        ],
+        [
+          22,
+          1,
+          "KEEP-DECSEL"
+        ]
+      ],
+      "cells": [
+        [
+          21,
+          5,
+          "      "
+        ]
+      ]
+    },
+    "notes": "With no DECSCA-protected cells, DECSEL erases to line end identically to EL, matching the spec-correct selective erase for this input."
+  },
+  {
+    "id": "erase-decsel-two-whole-line",
+    "category": "erase",
+    "spec_ref": "VT220-RM DECSEL (DEC-private selective erase)",
+    "input": "\\e[23;1HSEL-LINE\\e[24;1HKEEP-LAST\\e[23;5H\\e[?2K",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "rows": [
+        [
+          24,
+          1,
+          "KEEP-LAST"
+        ]
+      ],
+      "cells": [
+        [
+          23,
+          1,
+          "        "
+        ]
+      ]
+    },
+    "notes": "With no DECSCA-protected cells, DECSEL 2 clears the whole line identically to EL 2, matching the spec-correct selective erase for this input."
+  }
+]

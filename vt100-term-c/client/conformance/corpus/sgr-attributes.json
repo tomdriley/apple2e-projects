@@ -1,0 +1,334 @@
+[
+  {
+    "id": "sgr-inverse-on-text",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
+    "input": "\\e[7mINVERSE",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "INVERSE"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          7,
+          "inverse"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 1
+      }
+    },
+    "notes": "SGR 7 selects inverse video and leaves the inverse attribute active."
+  },
+  {
+    "id": "sgr-reset-normal-text",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
+    "input": "\\e[7mINV\\e[0mNORMAL",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "INVNORMAL"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          3,
+          "inverse"
+        ],
+        [
+          1,
+          4,
+          6,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "SGR 0 resets inverse video before following text."
+  },
+  {
+    "id": "sgr-inverse-off-27",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
+    "input": "\\e[7mON\\e[27mOFF",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "ONOFF"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          2,
+          "inverse"
+        ],
+        [
+          1,
+          3,
+          3,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "SGR 27 disables inverse video without a full reset."
+  },
+  {
+    "id": "sgr-reset-before-print",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
+    "input": "\\e[7m\\e[0mPLAIN",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "PLAIN"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          5,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "A reset before printing leaves subsequent cells normal."
+  },
+  {
+    "id": "sgr-bold-ignored",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
+    "input": "\\e[1mBOLD",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "BOLD"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          4,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "Bold is parsed but has no visible IIe attribute; text remains readable."
+  },
+  {
+    "id": "sgr-underline-ignored",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
+    "input": "\\e[4mUNDER",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "UNDER"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          5,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "Underline is consumed but not rendered on the IIe."
+  },
+  {
+    "id": "sgr-foreground-color-ignored",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG; issue #3",
+    "input": "\\e[31mRED",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "RED"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          3,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "ANSI foreground colors are consumed and ignored; glyphs render normally."
+  },
+  {
+    "id": "sgr-background-color-ignored",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG; issue #3",
+    "input": "\\e[41mBG",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "BG"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          2,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "ANSI background colors are consumed and ignored on monochrome IIe video."
+  },
+  {
+    "id": "sgr-256-color-ignored",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; xterm ctlseqs: 256-color SGR; issue #3",
+    "input": "\\e[38;5;9mBRIGHTRED",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "BRIGHTRED"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          9,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "256-color SGR is parsed and discarded; following text remains normal."
+  },
+  {
+    "id": "sgr-truecolor-ignored",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; xterm ctlseqs: truecolor SGR; issue #3",
+    "input": "\\e[38;2;255;0;0mTRUE",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "TRUE"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          4,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "Truecolor SGR is consumed and ignored; text is still displayed."
+  },
+  {
+    "id": "sgr-ignored-color-then-inverse",
+    "category": "sgr-attributes",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG; issue #3",
+    "input": "\\e[31mRED\\e[7mINV",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "REDINV"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          3,
+          "normal"
+        ],
+        [
+          1,
+          4,
+          3,
+          "inverse"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 1
+      }
+    },
+    "notes": "Ignored color does not prevent the supported inverse attribute from taking effect later."
+  }
+]

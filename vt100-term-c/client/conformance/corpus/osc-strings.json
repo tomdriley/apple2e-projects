@@ -1,0 +1,91 @@
+[
+  {
+    "id": "osc-title-bel-absent",
+    "category": "osc-strings",
+    "spec_ref": "ctlseqs: OSC 0 set icon name and window title",
+    "input": "\\e]0;MYTITLE\\a",
+    "status": "unsupported",
+    "expect": {
+      "absent": [
+        "MYTITLE",
+        "0;MYTITLE",
+        "]0;MYTITLE"
+      ]
+    },
+    "notes": "Issue #3: OSC title strings should affect metadata only and must not render on the display."
+  },
+  {
+    "id": "osc-title-st-absent",
+    "category": "osc-strings",
+    "spec_ref": "ctlseqs: OSC 2 set window title",
+    "input": "\\e]2;MYTITLE\\e\\",
+    "status": "unsupported",
+    "expect": {
+      "absent": [
+        "MYTITLE",
+        "2;MYTITLE",
+        "]2;MYTITLE"
+      ]
+    },
+    "notes": "Issue #3: ST-terminated OSC title strings should not leak their payload to the screen."
+  },
+  {
+    "id": "osc-title-bel-following-text",
+    "category": "osc-strings",
+    "spec_ref": "ctlseqs: OSC 0 set icon name and window title",
+    "input": "\\e]0;MYTITLE\\aAFTER",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "AFTER"
+        ]
+      ],
+      "absent": [
+        "MYTITLE",
+        "0;MYTITLE",
+        "]0;MYTITLE"
+      ]
+    },
+    "notes": "Issue #3: text after a BEL-terminated OSC should render at the original cursor position."
+  },
+  {
+    "id": "osc-title-st-following-text",
+    "category": "osc-strings",
+    "spec_ref": "ctlseqs: OSC 2 set window title",
+    "input": "\\e]2;MYTITLE\\e\\NEXT",
+    "status": "unsupported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "NEXT"
+        ]
+      ],
+      "absent": [
+        "MYTITLE",
+        "2;MYTITLE",
+        "]2;MYTITLE"
+      ]
+    },
+    "notes": "Issue #3: text after an ST-terminated OSC should render at the original cursor position."
+  },
+  {
+    "id": "osc-icon-name-bel-absent",
+    "category": "osc-strings",
+    "spec_ref": "ctlseqs: OSC 1 set icon name",
+    "input": "\\e]1;MYTITLE\\a",
+    "status": "unsupported",
+    "expect": {
+      "absent": [
+        "MYTITLE",
+        "1;MYTITLE",
+        "]1;MYTITLE"
+      ]
+    },
+    "notes": "Issue #3: OSC icon-name payloads should not render as literal display text."
+  }
+]

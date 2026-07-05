@@ -1,0 +1,758 @@
+[
+  {
+    "id": "cur-vt100-home",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.21 CUP",
+    "input": "\\e[2J\\e[H",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry home."
+  },
+  {
+    "id": "cur-vt100-cup",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.21 CUP",
+    "input": "\\e[2J\\e[8;20H",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        8,
+        20
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cup."
+  },
+  {
+    "id": "cur-vt100-cr",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3 CR; VT100-UG",
+    "input": "\\e[2J\\e[5;10H\\r",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cr."
+  },
+  {
+    "id": "cur-vt100-lf",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3 LF; VT100-UG",
+    "input": "\\e[2J\\e[5;10H\\n",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        6,
+        10
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry lf."
+  },
+  {
+    "id": "cur-vt100-backspace",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3 BS; VT100-UG",
+    "input": "\\e[2J\\e[5;10H\\b",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        9
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry backspace."
+  },
+  {
+    "id": "cur-vt100-cursor-fwd",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.20 CUF",
+    "input": "\\e[2J\\e[5;10H\\e[3C",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        13
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cursor_fwd."
+  },
+  {
+    "id": "cur-vt100-cursor-back",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.18 CUB",
+    "input": "\\e[2J\\e[5;10H\\e[4D",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        6
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cursor_back."
+  },
+  {
+    "id": "cur-vt100-cursor-up",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.22 CUU",
+    "input": "\\e[2J\\e[5;10H\\e[2A",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        3,
+        10
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cursor_up."
+  },
+  {
+    "id": "cur-vt100-cursor-down",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.19 CUD",
+    "input": "\\e[2J\\e[5;10H\\e[2B",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        7,
+        10
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cursor_down."
+  },
+  {
+    "id": "cur-vt100-tab",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3 HT; VT100-UG",
+    "input": "\\e[2J\\e[1;1H\\t",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        9
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry tab."
+  },
+  {
+    "id": "cur-vt100-print-text",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[3;5HHELLO",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        3,
+        10
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry print_text."
+  },
+  {
+    "id": "cur-vt100-autowrap",
+    "category": "cursor-motion",
+    "spec_ref": "VT100-UG autowrap",
+    "input": "\\e[2J\\e[1;79HABC",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        2,
+        2
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry autowrap."
+  },
+  {
+    "id": "cur-vt100-clear-homes",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.39 ED",
+    "input": "\\e[2J\\e[5;10H\\e[2J",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry clear_homes."
+  },
+  {
+    "id": "cur-vt100-back-clamp",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.18 CUB",
+    "input": "\\e[2J\\e[1;3H\\e[9D",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry back_clamp."
+  },
+  {
+    "id": "cur-vt100-fwd-clamp",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.20 CUF",
+    "input": "\\e[2J\\e[1;78H\\e[9C",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        80
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry fwd_clamp."
+  },
+  {
+    "id": "cur-vt100-up-clamp",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.22 CUU",
+    "input": "\\e[2J\\e[1;5H\\e[9A",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        5
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry up_clamp."
+  },
+  {
+    "id": "cur-vt100-save-restore",
+    "category": "cursor-motion",
+    "spec_ref": "VT100-UG DECSC/DECRC; ECMA-48 CSI s/u",
+    "input": "\\e[2J\\e[5;10H\\e[s\\e[1;1H\\e[u",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        10
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry save_restore."
+  },
+  {
+    "id": "cur-vt100-cha",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.9 CHA",
+    "input": "\\e[2J\\e[5;10H\\e[3G",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        3
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cha."
+  },
+  {
+    "id": "cur-vt100-hpa",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.57 HPA",
+    "input": "\\e[2J\\e[5;10H\\e[7`",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        7
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry hpa."
+  },
+  {
+    "id": "cur-vt100-vpa",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.158 VPA",
+    "input": "\\e[2J\\e[5;10H\\e[12d",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        12,
+        10
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry vpa."
+  },
+  {
+    "id": "cur-vt100-cnl",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.12 CNL",
+    "input": "\\e[2J\\e[5;10H\\e[3E",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        8,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cnl."
+  },
+  {
+    "id": "cur-vt100-cpl",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.13 CPL",
+    "input": "\\e[2J\\e[5;10H\\e[2F",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        3,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry cpl."
+  },
+  {
+    "id": "cur-vt100-ind",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.67 IND",
+    "input": "\\e[2J\\e[5;10H\\eD",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        6,
+        10
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry ind."
+  },
+  {
+    "id": "cur-vt100-ri",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.114 RI",
+    "input": "\\e[2J\\e[5;10H\\eM",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        4,
+        10
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry ri."
+  },
+  {
+    "id": "cur-vt100-nel",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.85 NEL",
+    "input": "\\e[2J\\e[5;10H\\eE",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        6,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry nel."
+  },
+  {
+    "id": "cur-vt100-ri-top",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.114 RI",
+    "input": "\\e[2J\\e[1;5H\\eM",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        5
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry ri_top."
+  },
+  {
+    "id": "cur-vt100-ind-bottom",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.67 IND",
+    "input": "\\e[2J\\e[24;5H\\eD",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        24,
+        5
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry ind_bottom."
+  },
+  {
+    "id": "cur-vt100-decstbm-home",
+    "category": "cursor-motion",
+    "spec_ref": "VT100-UG DECSTBM",
+    "input": "\\e[2J\\e[10;15H\\e[5;20r",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry decstbm_home."
+  },
+  {
+    "id": "cur-vt100-region-reset",
+    "category": "cursor-motion",
+    "spec_ref": "VT100-UG DECSTBM",
+    "input": "\\e[2J\\e[r\\e[2J\\e[8;8H",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        8,
+        8
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry region_reset."
+  },
+  {
+    "id": "cur-vt100-ris",
+    "category": "cursor-motion",
+    "spec_ref": "VT100-UG RIS",
+    "input": "\\e[2J\\e[12;30H\\ec",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ]
+    },
+    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry ris."
+  },
+  {
+    "id": "cur-cuu-default",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.22 CUU",
+    "input": "\\e[2J\\e[5;10H\\e[A",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        4,
+        10
+      ]
+    },
+    "notes": "CUU with omitted parameter defaults to one row up."
+  },
+  {
+    "id": "cur-cuu-explicit-clamped-top",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.22 CUU",
+    "input": "\\e[2J\\e[2;10H\\e[99A",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        10
+      ]
+    },
+    "notes": "CUU clamps at the top edge."
+  },
+  {
+    "id": "cur-cud-default",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.19 CUD",
+    "input": "\\e[2J\\e[5;10H\\e[B",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        6,
+        10
+      ]
+    },
+    "notes": "CUD with omitted parameter defaults to one row down."
+  },
+  {
+    "id": "cur-cud-explicit-clamped-bottom",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.19 CUD",
+    "input": "\\e[2J\\e[20;10H\\e[99B",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        24,
+        10
+      ]
+    },
+    "notes": "CUD clamps at the bottom edge."
+  },
+  {
+    "id": "cur-cuf-default",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.20 CUF",
+    "input": "\\e[2J\\e[5;10H\\e[C",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        11
+      ]
+    },
+    "notes": "CUF with omitted parameter defaults to one column forward."
+  },
+  {
+    "id": "cur-cuf-explicit-clamped-right",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.20 CUF",
+    "input": "\\e[2J\\e[5;75H\\e[99C",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        80
+      ]
+    },
+    "notes": "CUF clamps at the right edge."
+  },
+  {
+    "id": "cur-cub-default",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.18 CUB",
+    "input": "\\e[2J\\e[5;10H\\e[D",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        9
+      ]
+    },
+    "notes": "CUB with omitted parameter defaults to one column back."
+  },
+  {
+    "id": "cur-cub-explicit-clamped-left",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.18 CUB",
+    "input": "\\e[2J\\e[5;6H\\e[99D",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        1
+      ]
+    },
+    "notes": "CUB clamps at the left edge."
+  },
+  {
+    "id": "cur-cup-default-home",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.21 CUP",
+    "input": "\\e[2J\\e[9;9H\\e[H",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ]
+    },
+    "notes": "CUP with omitted row and column homes the cursor."
+  },
+  {
+    "id": "cur-cup-clamps-bottom-right",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.21 CUP",
+    "input": "\\e[2J\\e[99;99H",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        24,
+        80
+      ]
+    },
+    "notes": "CUP clamps out-of-range row and column to the screen edges."
+  },
+  {
+    "id": "cur-hvp-basic",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.64 HVP",
+    "input": "\\e[2J\\e[9;30f",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        9,
+        30
+      ]
+    },
+    "notes": "HVP positions the cursor using row;column parameters."
+  },
+  {
+    "id": "cur-hvp-default-home",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.64 HVP",
+    "input": "\\e[2J\\e[9;30H\\e[f",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ]
+    },
+    "notes": "HVP with omitted row and column homes the cursor."
+  },
+  {
+    "id": "cur-cha-default-column-one",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.9 CHA",
+    "input": "\\e[2J\\e[7;25H\\e[G",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        7,
+        1
+      ]
+    },
+    "notes": "CHA with omitted parameter moves to column 1."
+  },
+  {
+    "id": "cur-cha-clamps-right",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.9 CHA",
+    "input": "\\e[2J\\e[7;25H\\e[99G",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        7,
+        80
+      ]
+    },
+    "notes": "CHA clamps an out-of-range column at column 80."
+  },
+  {
+    "id": "cur-hpa-default-column-one",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.57 HPA",
+    "input": "\\e[2J\\e[7;25H\\e[`",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        7,
+        1
+      ]
+    },
+    "notes": "HPA with omitted parameter moves to column 1."
+  },
+  {
+    "id": "cur-hpa-clamps-right",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.57 HPA",
+    "input": "\\e[2J\\e[7;25H\\e[99`",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        7,
+        80
+      ]
+    },
+    "notes": "HPA clamps an out-of-range column at column 80."
+  },
+  {
+    "id": "cur-vpa-default-row-one",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.158 VPA",
+    "input": "\\e[2J\\e[7;25H\\e[d",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        25
+      ]
+    },
+    "notes": "VPA with omitted parameter moves to row 1 and preserves the column."
+  },
+  {
+    "id": "cur-vpa-clamps-bottom",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.158 VPA",
+    "input": "\\e[2J\\e[7;25H\\e[99d",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        24,
+        25
+      ]
+    },
+    "notes": "VPA clamps an out-of-range row at row 24."
+  },
+  {
+    "id": "cur-cnl-default",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.12 CNL",
+    "input": "\\e[2J\\e[5;10H\\e[E",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        6,
+        1
+      ]
+    },
+    "notes": "CNL defaults to one row down and column 1."
+  },
+  {
+    "id": "cur-cnl-clamps-bottom",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.12 CNL",
+    "input": "\\e[2J\\e[23;10H\\e[99E",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        24,
+        1
+      ]
+    },
+    "notes": "CNL clamps at the bottom edge and moves to column 1."
+  },
+  {
+    "id": "cur-cpl-default",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.13 CPL",
+    "input": "\\e[2J\\e[5;10H\\e[F",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        4,
+        1
+      ]
+    },
+    "notes": "CPL defaults to one row up and column 1."
+  },
+  {
+    "id": "cur-cpl-clamps-top",
+    "category": "cursor-motion",
+    "spec_ref": "ECMA-48 §8.3.13 CPL",
+    "input": "\\e[2J\\e[2;10H\\e[99F",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        1,
+        1
+      ]
+    },
+    "notes": "CPL clamps at the top edge and moves to column 1."
+  },
+  {
+    "id": "cur-desc-decrc-esc-7-8",
+    "category": "cursor-motion",
+    "spec_ref": "VT100-UG DECSC/DECRC",
+    "input": "\\e[2J\\e[5;10H\\e7\\e[1;1H\\e8",
+    "status": "unsupported",
+    "expect": {
+      "cursor": [
+        5,
+        10
+      ]
+    },
+    "notes": "VT100 ESC 7/ESC 8 save/restore is not implemented; CSI s/u is supported instead."
+  },
+  {
+    "id": "cur-desc-decrc-csi-s-u",
+    "category": "cursor-motion",
+    "spec_ref": "VT100-UG DECSC/DECRC; ECMA-48 CSI s/u",
+    "input": "\\e[2J\\e[5;10H\\e[s\\e[1;1H\\e[u",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        5,
+        10
+      ]
+    },
+    "notes": "CSI s/u saves and restores the cursor position in this firmware."
+  }
+]

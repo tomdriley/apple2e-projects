@@ -1,0 +1,219 @@
+[
+  {
+    "id": "glyph-uppercase",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[4;10HABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          4,
+          10,
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        ]
+      ],
+      "cursor": [
+        4,
+        36
+      ]
+    },
+    "notes": "Uppercase ASCII letters render at a known CUP position."
+  },
+  {
+    "id": "glyph-lowercase",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[6;5Habcdefghijklmnopqrstuvwxyz",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          6,
+          5,
+          "abcdefghijklmnopqrstuvwxyz"
+        ]
+      ],
+      "cursor": [
+        6,
+        31
+      ]
+    },
+    "notes": "Lowercase ASCII letters render unchanged in normal video."
+  },
+  {
+    "id": "glyph-digits",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[8;20H0123456789",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          8,
+          20,
+          "0123456789"
+        ]
+      ],
+      "cursor": [
+        8,
+        30
+      ]
+    },
+    "notes": "Decimal digits 0-9 render contiguously."
+  },
+  {
+    "id": "glyph-space-between-text",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[5;5HX Y",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          5,
+          5,
+          "X Y"
+        ]
+      ],
+      "cells": [
+        [
+          5,
+          6,
+          " "
+        ]
+      ],
+      "cursor": [
+        5,
+        8
+      ]
+    },
+    "notes": "Space (0x20) advances and leaves a blank cell between glyphs."
+  },
+  {
+    "id": "glyph-punct-21-2f",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[10;1H!\"#$%&\\'()*+,-./",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          10,
+          1,
+          "!\"#$%&'()*+,-./"
+        ]
+      ],
+      "cursor": [
+        10,
+        16
+      ]
+    },
+    "notes": "ASCII punctuation 0x21-0x2F renders literally."
+  },
+  {
+    "id": "glyph-punct-3a-40",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[12;10H:;<=>?@",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          12,
+          10,
+          ":;<=>?@"
+        ]
+      ],
+      "cursor": [
+        12,
+        17
+      ]
+    },
+    "notes": "ASCII punctuation 0x3A-0x40 renders literally."
+  },
+  {
+    "id": "glyph-punct-5b-60",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[14;15H[\\\\]^_`",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          14,
+          15,
+          "[\\]^_`"
+        ]
+      ],
+      "cursor": [
+        14,
+        21
+      ]
+    },
+    "notes": "ASCII punctuation 0x5B-0x60 renders literally, including backslash."
+  },
+  {
+    "id": "glyph-punct-7b-7e",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[16;20H{|}~",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          16,
+          20,
+          "{|}~"
+        ]
+      ],
+      "cursor": [
+        16,
+        24
+      ]
+    },
+    "notes": "ASCII punctuation 0x7B-0x7E renders literally."
+  },
+  {
+    "id": "glyph-mid-screen-vt100",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[12;34HVT100",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          12,
+          34,
+          "VT100"
+        ]
+      ],
+      "cursor": [
+        12,
+        39
+      ]
+    },
+    "notes": "Printable string renders mid-screen after CUP."
+  },
+  {
+    "id": "glyph-mid-screen-edge-text",
+    "category": "printable-glyphs",
+    "spec_ref": "ECMA-48 §6.4 GL printable characters; ASCII 0x20-0x7E",
+    "input": "\\e[2J\\e[20;70HEND?",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          20,
+          70,
+          "END?"
+        ]
+      ],
+      "cursor": [
+        20,
+        74
+      ]
+    },
+    "notes": "Printable string near the right edge renders without wrapping when it fits."
+  }
+]

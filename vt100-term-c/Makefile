@@ -74,7 +74,7 @@ $(MON): monitor.s | $(BUILDDIR)
 
 # Link -> raw binary placed at $0800; runtime helpers pulled from none.lib
 $(BIN): $(OBJ) vt100.cfg
-	"$(LD65)" -C vt100.cfg -m $(BUILDDIR)/vt100.map -o $(BIN) $(OBJ) "$(NONELIB)"
+	"$(LD65)" -C vt100.cfg -m $(BUILDDIR)/vt100.map -Ln $(BUILDDIR)/vt100.lbl -o $(BIN) $(OBJ) "$(NONELIB)"
 	@sz=$$(stat -c %s $(BIN)); echo "VT100.BIN: $$sz bytes (loads at \$$0800)"
 
 # DOS 3.3 disk image: copy the base disk, inject the binary, then replace the
