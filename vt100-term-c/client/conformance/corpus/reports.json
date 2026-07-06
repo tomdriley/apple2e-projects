@@ -115,6 +115,21 @@
     "notes": "Issue #3: tertiary DA (ESC[=c) is consumed cleanly -- the '=' and 'c' never print and the parser resumes normal rendering. The DCS-style tertiary reply is intentionally not implemented (see follow-ups)."
   },
   {
+    "id": "report-da3-tertiary-no-reply",
+    "category": "reports",
+    "spec_ref": "ctlseqs: Tertiary DA (ESC[=c)",
+    "input": "\\e[=c",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "report_absent": [
+        "\\e[?1;0c",
+        "\\e[>1;0;0c"
+      ]
+    },
+    "notes": "Tertiary DA (ESC[=c) is swallowed silently -- it must not emit a reply on the wire, in particular no spurious primary DA (ESC[?1;0c) or secondary DA (ESC[>1;0;0c). Locks the wire behavior that the screen-only sibling case cannot see."
+  },
+  {
     "id": "report-decrqm-decckm-reset",
     "category": "reports",
     "spec_ref": "VT220-RM DECRQM/DECRPM",
