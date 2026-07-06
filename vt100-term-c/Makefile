@@ -8,6 +8,7 @@
 #                 greeting BRUNs VT100 — same on real hardware). Start a serial
 #                 host first (see client/) so the null modem has a peer.
 #   make debug  — build + launch in MAME with the debugger
+#   make test   — build + run the ROM-free host-side unit tests (cc65 sim65)
 #   make clean  — remove build/ directory
 
 # --- Tool paths -----------------------------------------------------------
@@ -20,6 +21,7 @@ ifeq ($(OS),Windows_NT)
   CC65    ?= C:/cc65/bin/cc65.exe
   CA65    ?= C:/cc65/bin/ca65.exe
   LD65    ?= C:/cc65/bin/ld65.exe
+  SIM65   ?= C:/cc65/bin/sim65.exe
   AC      ?= C:/AppleCommander/ac.cmd
   MAME    ?= C:/mame/mame.exe
   ROMPATH ?= C:/mame/roms
@@ -30,6 +32,7 @@ else
   CC65    ?= cc65
   CA65    ?= ca65
   LD65    ?= ld65
+  SIM65   ?= sim65
   AC      ?= ac
   MAME    ?= mame
   ROMPATH ?= $(HOME)/.mame/roms
@@ -61,7 +64,7 @@ MAME_SERIAL := -sl2 ssc -sl2:ssc:rs232 null_modem -bitb socket.127.0.0.1:$(SERIA
 MAME_VIDEO  := -aux ext80 -skip_gameinfo -video bgfx -bgfx_backend d3d11
 
 # --------------------------------------------------------------------------
-.PHONY: all run debug clean
+.PHONY: all run debug clean test
 .SECONDARY:                       # keep intermediate build/*.s listings
 
 all: $(DSK)
@@ -114,3 +117,21 @@ debug: $(DSK)
 
 clean:
 	rm -rf $(BUILDDIR)
+
+# --- Host-side unit tests (ROM-free) ---------------------------------------
+# Compile the ring-buffer unit test with cc65's sim6502 target and run it on
+# the host through the sim65 simulator. This exercises the RX ring FIFO logic
+# (issue #5) with the real cc65 compiler's integer/wraparound semantics, with
+# no ROMs, MAME or serial socket needed -- so it runs in the hermetic CI job.
+# main() returns the failing-check count, so a regression fails the build.
+TESTDIR   := tests
+TESTPRG   := $(BUILDDIR)/ring_test.prg
+SIM6502LIB ?= sim6502.lib
+
+$(TESTPRG): $(TESTDIR)/ring_test.c | $(BUILDDIR)
+	"$(CC65)" -O -t sim6502 -o $(BUILDDIR)/ring_test.s $(TESTDIR)/ring_test.c
+	"$(CA65)" -t sim6502 -o $(BUILDDIR)/ring_test.o $(BUILDDIR)/ring_test.s
+	"$(LD65)" -t sim6502 -o $(TESTPRG) $(BUILDDIR)/ring_test.o "$(SIM6502LIB)"
+
+test: $(TESTPRG)
+	"$(SIM65)" $(TESTPRG)

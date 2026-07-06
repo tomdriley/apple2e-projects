@@ -60,6 +60,14 @@ flowchart LR
   it waits**. Without that, a multi-byte reply (like the `ESC[?1;0c` answer to a
   Device Attributes request) would block long enough for the host's next bytes to
   overrun the receive register. See [docs/LESSONS.md](LESSONS.md).
+- **When the ring is full** (all 256 slots occupied), both `serial_pump()` and
+  `serial_put()` stop copying and leave the byte in the hardware register rather
+  than lapping `r_head` past `r_tail` and silently overwriting unread data. The
+  occupancy counter `r_count` is a plain `unsigned` (not `unsigned char`) because a
+  full ring holds 256 bytes, which a byte-wide counter cannot represent — it would
+  wrap `255 -> 0` and the "full" guard could never fire. XON/XOFF normally keeps the
+  ring well below full, so reaching this cap means the host ignored XOFF; the excess
+  is dropped cleanly instead of corrupting the buffer (issue #5).
 
 ## Overrun: the recurring theme
 

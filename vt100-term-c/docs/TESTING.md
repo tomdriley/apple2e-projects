@@ -1,14 +1,24 @@
 # Testing
 
 Every feature is verified by booting the terminal in **headless MAME** and
-checking the result over the serial socket. There are three harnesses, all
-CI-friendly (non-zero exit on failure).
+checking the result over the serial socket. There are three MAME harnesses, all
+CI-friendly (non-zero exit on failure), plus a ROM-free host-side unit test for
+logic that a boot test cannot observe:
 
 | Harness | Verifies | How |
 |---------|----------|-----|
 | `client/vt100_test.py` | Cursor motion, keyboard | The terminal's own position reports and transmitted bytes |
 | `client/shell_test.py` | Rendered screen from real shell output | A snapshot of the 80×24 screen |
 | `client/conformance/runner.py` | Spec conformance across the VT100/ECMA-48 feature space | A spec-derived corpus graded by video-RAM, state-variable, and wire probes |
+| `tests/ring_test.c` (`make test`) | 6551 RX ring FIFO integrity under overflow (issue #5) | Compiled with cc65's `sim6502` target and run on the host under `sim65` — no ROMs, MAME, or serial socket |
+
+The ring unit test exists because the RX ring-full bug (issue #5) is a
+buffer-overflow/type defect that a conformance corpus case cannot reliably
+observe — flow control (XON/XOFF) normally keeps the ring from ever filling. It
+mirrors the ring FIFO from `serial.c`, drives it past `RING_SIZE`, and asserts no
+bytes are lost or overwritten; it also runs the pre-fix logic to prove the checks
+have teeth. Keep the mirror in sync with `serial.c` (a follow-up is to extract the
+ring into a shared module the test can link directly).
 
 ## Continuous integration & reproducible toolchain
 
@@ -42,7 +52,7 @@ runs both:
 
 | Job | ROMs? | What it does |
 |-----|-------|--------------|
-| `hermetic-checks` | no | builds `VT100.BIN` with the pinned cc65 and runs `selftest.py` + `oracle.py --audit`. A fast, portable pre-check that runs on **every** push/PR, including fork PRs. |
+| `hermetic-checks` | no | builds `VT100.BIN` with the pinned cc65 and runs `selftest.py` + `oracle.py --audit` + the `make test` ring unit test. A fast, portable pre-check that runs on **every** push/PR, including fork PRs. |
 | `mame-conformance` | yes | boots the firmware in headless MAME against the **actual Apple IIe ROMs** and runs the full `runner.py --target mame` suite; uploads `build/conformance.json` + failing-screen artifacts. This is the firmware regression gate. |
 
 `mame-conformance` fails the build on any REGRESSION or ERROR (not yet `--strict`).
@@ -398,5 +408,15 @@ for you.
 Validate the case offline with `python client/conformance/selftest.py` (it loads
 and checks every corpus file), then grade it with
 `python client/conformance/runner.py --target mame -k <your-id>`.
+
+**A firmware logic unit** (something a boot test cannot observe — e.g. a ring or
+counter overflow that flow control normally prevents) → add a self-contained C
+file under `tests/` that mirrors the logic, compile it for cc65's `sim6502`
+target, and run it under `sim65`, returning the failing-check count from `main()`
+so the build fails on a regression. Wire it into the `test` target in the
+[`Makefile`](../../Makefile) and run it with `make test`; the `hermetic-checks` CI
+job already invokes it. `tests/ring_test.c` (the issue #5 RX-ring test) is the
+model to copy — include both the fixed and the pre-fix logic so the assertions
+provably distinguish them.
 
 See [docs/HACKING.md](HACKING.md) for implementing the feature the test drives.

@@ -68,6 +68,34 @@ to stay under a byte time. Removing the shadow shifted that compiled timing just
 enough to cross the line — the render change and the serial bug were coupled
 through raw cycle count.
 
+## The ring's "full" guard that never fired
+
+The overrun fixes above lean on the 256-byte RX ring to soak up bursts. But the
+ring had its own latent bug (issue #5): the occupancy counter `r_count` was an
+`unsigned char`, while `RING_SIZE` is 256. The full guards were written
+`r_count != RING_SIZE` — and since an `unsigned char` can only hold 0..255, that
+comparison is **always true**. cc65 even said so: *"Result of comparison is always
+true"* at both guard sites. The ring therefore never detected "full": on overflow
+`serial_pump()`/`serial_put()` kept writing, `r_head` lapped `r_tail` (silently
+overwriting unread bytes), and `++r_count` wrapped `255 -> 0`, corrupting the
+count. XON/XOFF at 192 bytes normally keeps the ring from ever reaching 256, which
+is why this stayed hidden — but a host that ignores or lags XOFF walks straight
+into it.
+
+Fix: widen `r_count` to `unsigned` (a full ring genuinely holds 256 bytes, one
+more than a byte can represent) and compare `r_count < RING_SIZE`. That both
+detects the full condition and silences the two warnings. `serial_rx_ready()`
+still returns `unsigned char`, so it clamps the lone value 256 to 255 rather than
+truncating it to 0 (callers use it only as a "bytes waiting" boolean).
+
+The lesson mirrors the overrun saga: **a counter must be wide enough to represent
+the count it guards.** Trust the compiler's "always true/false" warnings — here one
+flagged a real data-corruption path. A ROM-free unit test now pins this down
+(`make test`, see [docs/TESTING.md](TESTING.md)): it drives a mirror of the ring
+past 256 and asserts FIFO integrity with no lost or overwritten bytes. A natural
+follow-up is to extract the ring into a shared module the test can link directly
+(rather than mirror), which also matters for the planned interrupt-driven RX path.
+
 ## Memory-mapped I/O must be `volatile`
 
 An early version cached the 6551 status register because the pointer wasn't
