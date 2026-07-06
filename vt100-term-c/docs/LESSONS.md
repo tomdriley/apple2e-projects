@@ -71,7 +71,7 @@ through raw cycle count.
 ## The ring's "full" guard that never fired
 
 The overrun fixes above lean on the 256-byte RX ring to soak up bursts. But the
-ring had its own latent bug (issue #5): the occupancy counter `r_count` was an
+ring had its own latent bug: the occupancy counter `r_count` was an
 `unsigned char`, while `RING_SIZE` is 256. The full guards were written
 `r_count != RING_SIZE` — and since an `unsigned char` can only hold 0..255, that
 comparison is **always true**. cc65 even said so: *"Result of comparison is always

@@ -121,7 +121,7 @@ clean:
 # --- Host-side unit tests (ROM-free) ---------------------------------------
 # Compile the ring-buffer unit test with cc65's sim6502 target and run it on
 # the host through the sim65 simulator. This exercises the RX ring FIFO logic
-# (issue #5) with the real cc65 compiler's integer/wraparound semantics, with
+# with the real cc65 compiler's integer/wraparound semantics, with
 # no ROMs, MAME or serial socket needed -- so it runs in the hermetic CI job.
 # main() returns the failing-check count, so a regression fails the build.
 TESTDIR   := tests
