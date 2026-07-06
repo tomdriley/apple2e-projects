@@ -403,7 +403,7 @@ void vt100_feed(char ch)
         } else if (c == ']' || c == 'P' || c == '^' || c == '_') {
             /* OSC (]), DCS (P), PM (^) and APC (_) introduce a string that runs
              * until ST (ESC \) or, for OSC, BEL. Swallow the payload so it never
-             * prints as literal text (issue #3). */
+             * prints as literal text. */
             state = S_STR;
         } else {
             switch (c) {
