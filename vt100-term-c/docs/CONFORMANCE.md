@@ -258,8 +258,8 @@ via the normal not-checkable path.
   `spec-suspect` list (current reference agreement 133/134).
 - **A corpus authoring bug** — `osc-title-st-following-text` (and, masked by a DCS quirk,
   `dcs-following-text-position`) encoded the ST terminator so `model.decode` dropped a byte
-  when literal text followed; the fix is to encode ST as `\x1b\x5c`. Fixed in the issue #3
-  change, which also implements OSC/DCS consume and promotes those cases (and secondary DA)
+  when literal text followed; the fix is to encode ST as `\x1b\x5c`. This is now handled
+  correctly by the OSC/DCS consume states, which also promote those cases (and secondary DA)
   from xfail to `supported`.
 
 
