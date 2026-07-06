@@ -135,6 +135,37 @@
     "notes": "Issue #2 guard: inverse video must not leak through a 1049 alt-screen switch."
   },
   {
+    "id": "alt-1049-pager-inverse-status-clears",
+    "category": "alt-screen",
+    "spec_ref": "VT100-UG SGR; ctlseqs: mode 1049 alternate screen",
+    "input": "\\e[?1049h\\e[24;1H\\e[7mSTATUSLINE\\e[?1049l\\e[1;1HSHELLTEXT",
+    "status": "supported",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "SHELLTEXT"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          9,
+          "normal"
+        ]
+      ],
+      "absent": [
+        "STATUSLINE"
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "Issue #2 exact repro: a pager enters the alt screen (?1049h), draws an inverse status line, and quits (?1049l) with inverse still selected. The restored shell text must render normal, the alt-screen status line must be gone, and the parser's attr_inverse must be cleared. Fails against the pre-fix firmware, which left inverse selected across the rmcup transition."
+  },
+  {
     "id": "alt-1049-restores-cursor",
     "category": "alt-screen",
     "spec_ref": "ctlseqs: DEC private mode 1049 alternate screen",
