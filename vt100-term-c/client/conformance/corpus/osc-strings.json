@@ -4,7 +4,8 @@
     "category": "osc-strings",
     "spec_ref": "ctlseqs: OSC 0 set icon name and window title",
     "input": "\\e]0;MYTITLE\\a",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "spec",
     "expect": {
       "absent": [
         "MYTITLE",
@@ -19,7 +20,8 @@
     "category": "osc-strings",
     "spec_ref": "ctlseqs: OSC 2 set window title",
     "input": "\\e]2;MYTITLE\\e\\",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "spec",
     "expect": {
       "absent": [
         "MYTITLE",
@@ -34,7 +36,8 @@
     "category": "osc-strings",
     "spec_ref": "ctlseqs: OSC 0 set icon name and window title",
     "input": "\\e]0;MYTITLE\\aAFTER",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "spec",
     "expect": {
       "rows": [
         [
@@ -55,8 +58,9 @@
     "id": "osc-title-st-following-text",
     "category": "osc-strings",
     "spec_ref": "ctlseqs: OSC 2 set window title",
-    "input": "\\e]2;MYTITLE\\e\\NEXT",
-    "status": "unsupported",
+    "input": "\\e]2;MYTITLE\\x1b\\x5cNEXT",
+    "status": "supported",
+    "basis": "spec",
     "expect": {
       "rows": [
         [
@@ -78,7 +82,8 @@
     "category": "osc-strings",
     "spec_ref": "ctlseqs: OSC 1 set icon name",
     "input": "\\e]1;MYTITLE\\a",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "spec",
     "expect": {
       "absent": [
         "MYTITLE",

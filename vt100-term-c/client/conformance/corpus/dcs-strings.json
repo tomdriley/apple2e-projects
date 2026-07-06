@@ -4,35 +4,38 @@
     "category": "dcs-strings",
     "spec_ref": "ctlseqs: DCS DECRQSS",
     "input": "\\eP$q m\\e\\",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "tolerance",
     "expect": {
       "absent": [
         "$q m",
         "q m"
       ]
     },
-    "notes": "Issue #3: DECRQSS DCS payload bytes should not be displayed."
+    "notes": "Issue #3: DECRQSS DCS payload bytes are swallowed and never displayed (the DECRQSS reply itself is not implemented)."
   },
   {
     "id": "dcs-sixel-payload-absent",
     "category": "dcs-strings",
     "spec_ref": "ctlseqs: DCS sixel",
     "input": "\\ePqSIXELPAYLOAD\\e\\",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "tolerance",
     "expect": {
       "absent": [
         "SIXELPAYLOAD",
         "qSIXELPAYLOAD"
       ]
     },
-    "notes": "Issue #3: DCS sixel-style payloads should not leak to the character display."
+    "notes": "Issue #3: DCS sixel-style payloads are swallowed and do not leak to the character display."
   },
   {
     "id": "dcs-following-text-position",
     "category": "dcs-strings",
     "spec_ref": "ctlseqs: DCS string control",
-    "input": "\\ePqPAYLOAD\\e\\DONE",
-    "status": "unsupported",
+    "input": "\\ePqPAYLOAD\\x1b\\x5cDONE",
+    "status": "supported",
+    "basis": "tolerance",
     "expect": {
       "rows": [
         [
@@ -46,20 +49,21 @@
         "qPAYLOAD"
       ]
     },
-    "notes": "Issue #3: text after a DCS should render where the DCS began, with no payload leakage."
+    "notes": "Issue #3: text after a DCS renders where the DCS began, with no payload leakage."
   },
   {
     "id": "dcs-private-payload-absent",
     "category": "dcs-strings",
     "spec_ref": "ctlseqs: DCS private string",
     "input": "\\eP+qPRIVATE\\e\\",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "tolerance",
     "expect": {
       "absent": [
         "PRIVATE",
         "+qPRIVATE"
       ]
     },
-    "notes": "Issue #3: private DCS strings are not implemented and their payload should remain off-screen."
+    "notes": "Issue #3: private DCS strings are swallowed and their payload remains off-screen."
   }
 ]

@@ -4,8 +4,10 @@
  * characters go to the screen; a small state machine (NORMAL -> ESC -> CSI)
  * recognizes the common cursor, erase, and report sequences. Private and
  * unrecognized sequences (colors/SGR, ESC[?25h, ...) are consumed and ignored
- * so they never corrupt the display. Cursor-position reports (ESC[6n) are
- * answered over the serial line, which is what the automated test checks.
+ * so they never corrupt the display. OSC/DCS/PM/APC strings (ESC], ESC P, ...)
+ * are swallowed until their ST or BEL terminator so their payloads never print.
+ * Cursor-position reports (ESC[6n) are answered over the serial line, which is
+ * what the automated test checks.
  */
 #include "vt100.h"
 #include "monitor.h"
@@ -16,16 +18,19 @@
 #define S_ESC     1
 #define S_CSI     2
 #define S_CHARSET 3
+#define S_STR     4 /* OSC/DCS/PM/APC string: swallow until ST or BEL */
+#define S_STR_ESC 5 /* saw ESC inside a string; a following '\' ends ST */
 #define MAXPARAM  4
 
 static unsigned char state;
 static unsigned int  param[MAXPARAM];
-static unsigned char nparam;       /* index of the parameter currently being built */
-static unsigned char priv;         /* a private marker ('?') was seen in this CSI */
+static unsigned char nparam; /* index of the parameter currently being built */
+static unsigned char priv;   /* a private marker ('?') was seen in this CSI */
+static unsigned char csi_gt; /* a '>' or '=' DA marker was seen in this CSI */
 /* Non-static so the conformance state probe can read them from RAM;
  * exporting them changes no code, only the symbol table. */
-unsigned char app_cursor;          /* DECCKM: application cursor keys enabled */
-unsigned char attr_inverse;        /* SGR 7: inverse video currently selected */
+unsigned char        app_cursor;   /* DECCKM: application cursor keys enabled */
+unsigned char        attr_inverse; /* SGR 7: inverse video currently selected */
 static unsigned char charset_g0;   /* the charset select (ESC(x) targets G0 */
 static unsigned char g0_special;   /* G0 is DEC special graphics (line drawing) */
 static unsigned char saved_col, saved_row;
@@ -48,6 +53,7 @@ static void reset_params(void)
     }
     nparam = 0;
     priv   = 0;
+    csi_gt = 0;
 }
 
 static unsigned int getp(unsigned char i)
@@ -213,14 +219,29 @@ static void csi_dispatch(unsigned char f)
             serial_put('n');
         }
         break;
-    case 'c': /* device attributes: identify as a VT100 */
-        serial_put(0x1B);
-        serial_put('[');
-        serial_put('?');
-        serial_put('1');
-        serial_put(';');
-        serial_put('0');
-        serial_put('c');
+    case 'c': /* device attributes */
+        if (csi_gt == '>') {
+            /* secondary DA (ESC[>c): identify as a VT220-family terminal, version 0 */
+            serial_put(0x1B);
+            serial_put('[');
+            serial_put('>');
+            serial_put('1');
+            serial_put(';');
+            serial_put('0');
+            serial_put(';');
+            serial_put('0');
+            serial_put('c');
+        } else if (csi_gt == 0) {
+            /* primary DA (ESC[c): identify as a base VT100 */
+            serial_put(0x1B);
+            serial_put('[');
+            serial_put('?');
+            serial_put('1');
+            serial_put(';');
+            serial_put('0');
+            serial_put('c');
+        }
+        /* tertiary DA (ESC[=c): consumed silently -- no simple reply exists */
         break;
     case 's': /* save cursor */
         saved_col = scr_col();
@@ -256,7 +277,18 @@ static void csi_dispatch(unsigned char f)
         unsigned char k;
         for (k = 0; k <= nparam; ++k) {
             unsigned int p = getp(k);
-            if (p == 0 || p == 27) {
+            if (p == 38 || p == 48) {
+                /* extended color: skip its arguments so a color index or RGB
+                 * component is never misread as an attribute (e.g. 38;5;7 must
+                 * not turn on inverse video). */
+                if (getp((unsigned char)(k + 1)) == 2) {
+                    k = (unsigned char)(k + 4); /* 38;2;r;g;b */
+                } else if (getp((unsigned char)(k + 1)) == 5) {
+                    k = (unsigned char)(k + 2); /* 38;5;idx */
+                } else {
+                    k = (unsigned char)(k + 1);
+                }
+            } else if (p == 0 || p == 27) {
                 attr_inverse = 0; /* reset / inverse off */
             } else if (p == 7) {
                 attr_inverse = 1; /* inverse on */
@@ -368,6 +400,11 @@ void vt100_feed(char ch)
         } else if (c == '(' || c == ')') {
             charset_g0 = (unsigned char)(c == '('); /* which G-set to designate */
             state      = S_CHARSET;
+        } else if (c == ']' || c == 'P' || c == '^' || c == '_') {
+            /* OSC (]), DCS (P), PM (^) and APC (_) introduce a string that runs
+             * until ST (ESC \) or, for OSC, BEL. Swallow the payload so it never
+             * prints as literal text (issue #3). */
+            state = S_STR;
         } else {
             switch (c) {
             case 'D': /* IND: index -- down one line, scroll at bottom */
@@ -417,11 +454,26 @@ void vt100_feed(char ch)
             }
         } else if (c == '?') {
             priv = 1; /* private-mode marker (e.g. ESC[?25h) */
+        } else if (c == '>' || c == '=') {
+            csi_gt = c; /* secondary/tertiary DA marker (ESC[>c / ESC[=c) */
         } else if (c >= 0x40 && c <= 0x7E) {
             csi_dispatch(c); /* a final byte: act and return to normal */
             state = S_NORMAL;
         }
         /* else: an intermediate byte -> consume, stay in CSI */
+        break;
+
+    case S_STR: /* OSC/DCS/PM/APC payload: swallow until ST (ESC \) or BEL */
+        if (c == 0x07) {
+            state = S_NORMAL; /* BEL terminates (common OSC form) */
+        } else if (c == 0x1B) {
+            state = S_STR_ESC; /* possible ST introducer */
+        }
+        /* else: consume the payload byte and stay in the string */
+        break;
+
+    case S_STR_ESC: /* saw ESC in a string; '\' completes ST, anything else ends it too */
+        state = S_NORMAL;
         break;
     }
 }
