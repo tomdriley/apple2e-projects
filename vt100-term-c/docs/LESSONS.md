@@ -90,11 +90,27 @@ truncating it to 0 (callers use it only as a "bytes waiting" boolean).
 
 The lesson mirrors the overrun saga: **a counter must be wide enough to represent
 the count it guards.** Trust the compiler's "always true/false" warnings — here one
-flagged a real data-corruption path. A ROM-free unit test now pins this down
-(`make test`, see [docs/TESTING.md](TESTING.md)): it drives a mirror of the ring
-past 256 and asserts FIFO integrity with no lost or overwritten bytes. A natural
-follow-up is to extract the ring into a shared module the test can link directly
-(rather than mirror), which also matters for the planned interrupt-driven RX path.
+flagged a real data-corruption path.
+
+**Why there is no corpus/MAME regression test for this.** The overflow can't be
+provoked through the conformance harness: its transport is *windowed-lossless* by
+construction. The sender batches the payload into `WINDOW`-byte groups and blocks
+for a cursor-report (DSR/CPR) ack before releasing the next window, with
+`WINDOW = 96` — deliberately `< ring/2` (see `client/bench.py`) — and it honors
+XOFF. So a conformance case can never put more than ~96 bytes in flight, and
+`r_count` never approaches `RING_SIZE`; the very thing that makes the harness
+deterministic also makes it structurally incapable of flooding the ring. A real
+overflow test would need to bypass flow control and race the drain loop, which the
+harness will not do. The guard is therefore covered instead by (1) the cc65
+warning's disappearance (the comparison is no longer trivially constant), (2) the
+existing ROM-backed MAME conformance gate (proves the widened counter didn't
+regress normal receive), and (3) a ROM-free host unit test (`make test`, see
+[docs/TESTING.md](TESTING.md)) that drives a mirror of the ring past 256 directly
+and asserts FIFO integrity with no lost or overwritten bytes. Accepting the absent
+corpus test is a deliberate, recorded deviation, not an oversight. A natural
+follow-up is to extract the ring into a shared module the unit test can link
+directly (rather than mirror), which also matters for the planned interrupt-driven
+RX path.
 
 ## Memory-mapped I/O must be `volatile`
 
