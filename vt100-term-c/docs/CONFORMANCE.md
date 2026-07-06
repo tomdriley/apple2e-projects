@@ -232,8 +232,8 @@ way the case's real bytes never do, so a screen diff there is not a valid oracle
 - **Reference agreement at the first oracle run: 98.5%** (131/133 strict-spec cases);
   the two `spec-suspect`s were the firmware/spec question below (the ED/DECSED cursor
   homing, now **fixed** — see the next bullet) and one mis-authored terminator. After the
-  ED/DECSED fix plus the two new guard cases, the current audit agreement is **133/134**,
-  with only the terminator case (`osc-title-st-following-text`) still outstanding.
+  ED/DECSED fix plus the two new guard cases, the current audit agreement is **134/134** with no remaining
+  spec-suspects (the mis-authored terminator case is now fixed — see below).
 - **Differential: 3 REGRESSIONs, all one root cause** — the firmware homed the cursor to
   (1,1) on erase-all (`ED` / `DECSED` with parameter `2`), while ECMA-48 §8.3.39 (ED) does
   not move the cursor and pyte leaves it put. This was a genuine firmware/spec
@@ -246,10 +246,14 @@ way the case's real bytes never do, so a screen diff there is not a valid oracle
   `erase-ed-two-all`, `erase-decsed-two-all`) now assert the unchanged cursor, and the
   dedicated positive-assertion cases `erase-ed-two-keeps-cursor` /
   `erase-decsed-two-keeps-cursor` guard the invariant; `cur-vt100-clear-homes` has left the
-  `spec-suspect` list (current reference agreement 133/134).
-- **A corpus authoring bug** — `osc-title-st-following-text` (and, masked by a DCS quirk,
-  `dcs-following-text-position`) encode the ST terminator so `model.decode` drops a byte
-  when literal text follows; the fix is to encode ST as `\x1b\x5c`.
+  `spec-suspect` list.
+- **A corpus authoring bug (now fixed)** — `osc-title-st-following-text` (and,
+  masked by a DCS quirk, `dcs-following-text-position`) encoded the ST terminator
+  as `\e\` immediately before literal text, so `model.decode`'s unknown-escape
+  rule dropped the `0x5c` and the "text after ST" behaviour was never exercised.
+  Both inputs now encode ST explicitly as `\x1b\x5c` (issue #30), which removes
+  `osc-title-st-following-text` from the `spec-suspect` list (reference agreement now
+  **134/134**). See the ST encoding note in [TESTING.md](TESTING.md#adding-a-test).
 
 
 Design note: pyte **augments**, it does not replace. The original proposal's literal "generate the

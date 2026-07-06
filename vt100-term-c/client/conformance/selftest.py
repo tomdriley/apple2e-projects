@@ -45,6 +45,32 @@ def test_decode():
     assert decode(r"A\r\nB") == b"A\r\nB"
     assert decode(r"\xc3\xa9") == b"\xc3\xa9"
     assert decode(r"\a\b\t\v\f\0") == b"\x07\x08\x09\x0b\x0c\x00"
+    # Unknown escape drops the backslash and passes the next char through: this
+    # is exactly why a 7-bit ST (ESC \) written as `\e\` before literal text
+    # loses its 0x5c. Encoding ST as `\x1b\x5c` must survive with the terminator
+    # intact and the following text preserved (issue #30 regression guard).
+    assert decode(r"\e\N") == b"\x1bN"                       # the trap: 0x5c dropped
+    assert decode(r"\x1b\x5c") == b"\x1b\x5c"                # explicit ST bytes
+    assert decode(r"\e]2;T\x1b\x5cNEXT") == b"\x1b]2;T\x1b\x5cNEXT"
+
+
+def test_corpus_st_terminator_before_text():
+    # Guard the two "text after ST" cases: their decoded input must contain a
+    # real ST (0x1b 0x5c) immediately followed by the literal tail. A regression
+    # to `\e\` encoding would drop the 0x5c and this would fail (issue #30).
+    want = {
+        "osc-title-st-following-text": b"NEXT",
+        "dcs-following-text-position": b"DONE",
+    }
+    by_id = {c.id: c for c in load_corpus()}
+    for cid, tail in want.items():
+        assert cid in by_id, f"missing corpus case {cid}"
+        raw = decode(by_id[cid].input)
+        assert b"\x1b\x5c" + tail in raw, (
+            f"{cid}: ST not followed by {tail!r} in decoded input {raw!r}")
+        # And the tail must not appear glued straight onto a bare ESC (the bug).
+        assert b"\x1b" + tail not in raw, (
+            f"{cid}: ST terminator collapsed to a bare ESC in {raw!r}")
 
 
 def test_check_each_key():

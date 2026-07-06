@@ -364,6 +364,14 @@ for you.
 
 - **`input`** uses a mini-decoder: `\e` = ESC, `\xNN` = one hex byte, plus
   `\a \b \t \n \v \f \r \0` and `\\`. Bytes ≥ `0x80` are preserved (UTF-8 cases).
+  Any *other* `\`-escape is an "unknown escape": the decoder drops the backslash
+  and passes the following character through literally. This matters for the
+  7-bit String Terminator (ST = `ESC \` = `0x1b 0x5c`): writing it as `\e\` works
+  only at end-of-input, because a following letter (`\e\NEXT`) is parsed as `\N`,
+  which silently drops the `0x5c` and collapses ST into a bare `ESC` that then
+  eats the next byte as SS2. **When literal text follows an ST, encode it
+  explicitly as `\x1b\x5c`** (e.g. `\e]2;TITLE\x1b\x5cNEXT`) so the terminator
+  survives decoding.
 - **`status`** is `supported`, `partial`, or `unsupported`. Author `expect` from
   the **spec**, not from current firmware output: for a gap, the expected value is
   what a conformant VT100 would do, so the case is a clean XFAIL that flips to a

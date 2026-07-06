@@ -31,7 +31,7 @@
     "id": "dcs-following-text-position",
     "category": "dcs-strings",
     "spec_ref": "ctlseqs: DCS string control",
-    "input": "\\ePqPAYLOAD\\e\\DONE",
+    "input": "\\ePqPAYLOAD\\x1b\\x5cDONE",
     "status": "unsupported",
     "expect": {
       "rows": [

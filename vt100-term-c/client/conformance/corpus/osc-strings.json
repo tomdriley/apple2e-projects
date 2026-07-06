@@ -55,7 +55,7 @@
     "id": "osc-title-st-following-text",
     "category": "osc-strings",
     "spec_ref": "ctlseqs: OSC 2 set window title",
-    "input": "\\e]2;MYTITLE\\e\\NEXT",
+    "input": "\\e]2;MYTITLE\\x1b\\x5cNEXT",
     "status": "unsupported",
     "expect": {
       "rows": [
