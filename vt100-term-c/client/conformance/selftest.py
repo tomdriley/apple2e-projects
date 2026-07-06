@@ -96,23 +96,30 @@ def test_report_check_is_exact():
 
 
 def test_readiness_probe_not_appended_on_trailing_query():
-    # issue #31: the MameTarget must NOT append its ESC[6n readiness probe to a
-    # final render window that already ends in the case's own report-eliciting
-    # query, or the doubled query manufactures an artificial back-to-back DSR that
-    # can leave a stray report-final byte on the firmware glyph plane. `_send`
-    # uses target_mame._REPORT_QUERY to detect that trailing query; assert it
-    # flags every reports-corpus input and never false-positives on ordinary
-    # render cases. (target_mame imports only stdlib, so this stays MAME-free.)
+    # The MameTarget must NOT append its ESC[6n readiness probe to a final render
+    # window that already ENDS in the case's own report-eliciting query, or the
+    # doubled query manufactures an artificial back-to-back DSR that can leave a
+    # stray report-final byte on the firmware glyph plane. `_send` makes that
+    # decision with target_mame._REPORT_QUERY: a trailing query takes the raw path
+    # (no probe); anything else still gets the probe. Assert that decision on
+    # literal inputs -- not a corpus-wide property -- so this stays correct no
+    # matter what cases the reports corpus grows. (target_mame imports only stdlib,
+    # so this stays MAME-free.)
     import target_mame  # noqa: E402
-    reports = [c for c in load_corpus() if c.category == "reports"]
-    assert reports, "reports corpus category is missing"
-    for c in reports:
-        assert target_mame._REPORT_QUERY.search(c.input_bytes), (
-            f"{c.id}: trailing report query {c.input_bytes!r} not detected -- "
-            "the probe would still be appended and contaminate this case")
-    # Ordinary render inputs that do not end in a query still get the probe.
-    for data in (b"", b"A\r\nB", b"\x1b[2J", b"\x1b[8;20H", b"HELLO"):
-        assert not target_mame._REPORT_QUERY.search(data), (
+
+    # A window that ends in a report query => raw path, probe suppressed.
+    for query in (b"\x1b[6n", b"\x1b[0c", b"\x1b[5n", b"\x1b[c",
+                  b"HELLO\x1b[6n", b"\x1b[8;20H\x1b[6n"):
+        assert target_mame._REPORT_QUERY.search(query) is not None, (
+            f"{query!r}: trailing report query not detected -- the probe would "
+            "still be appended and contaminate a self-querying case")
+
+    # A window that does NOT end in a query => probe still appended. This includes
+    # a query FOLLOWED BY text (e.g. a tertiary-DA query then glyphs): the last
+    # thing on the wire is text, so the probe is correctly required.
+    for data in (b"", b"A\r\nB", b"\x1b[2J", b"\x1b[8;20H", b"HELLO",
+                 b"\x1b[=cAXIS", b"\x1b[6nX"):
+        assert target_mame._REPORT_QUERY.search(data) is None, (
             f"{data!r} wrongly flagged as a trailing report query")
 
 
