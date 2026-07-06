@@ -75,6 +75,20 @@ pause it.
 
 ## 4. Ready-handshake (and windowed pacing)
 
+DSR (**Device Status Report**) is the standard VT100/ECMA-48 mechanism by which a
+host asks the terminal to report its status, and the terminal answers *inline on
+the same byte stream* — there is no separate control channel (§1). The firmware
+implements the two standard DSR requests — `ESC[6n` (report cursor position) and
+`ESC[5n` (report operating status) — alongside Device Attributes (`ESC[c`); the
+exact replies are tabulated in §5.
+
+DSR matters here for more than status reporting: `ESC[6n` is the terminal's only
+*in-band, request/response* back-channel. Because the line has **no hardware flow
+control** (§1) and only software XON/XOFF — which a host cannot react to instantly,
+so bytes already in flight can still overrun the ring (§3) — a host benefits from a
+positive "you have processed everything up to exactly here" signal. An ordered DSR
+reply is precisely that, which is why the query does double duty below.
+
 Because bytes are processed strictly in order (§2), a Device Status Report request
 appended to a payload is only answered **after** everything before it has been
 drawn. That turns the standard `ESC[6n` cursor query into two things:
