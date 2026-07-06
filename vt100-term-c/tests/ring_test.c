@@ -1,4 +1,4 @@
-/* Host-side unit test for the 6551 receive ring buffer (issue #5).
+/* Host-side unit test for the 6551 receive ring buffer.
  *
  * The real ring lives in serial.c as file-scope statics wired directly to the
  * 6551's memory-mapped registers, so it cannot be linked and exercised in
@@ -7,7 +7,7 @@
  * sim6502 target + the sim65 simulator, so it is compiled by the *real* cc65
  * compiler and gets cc65's exact integer/wraparound semantics (the whole point
  * of the bug). Keep this mirror in sync with serial.c if the ring changes; a
- * follow-up (relevant to #8, interrupt-driven RX) is to extract the ring into a
+ * follow-up (relevant to future interrupt-driven RX) is to extract the ring into a
  * shared module this test can link directly instead of mirroring.
  *
  * It exercises both variants:
@@ -25,7 +25,7 @@
 
 #define RING_SIZE 256
 
-/* ---- Fixed ring: mirrors serial.c after the issue #5 fix ---------------- */
+/* ---- Fixed ring: mirrors serial.c's fixed ring ------------------------- */
 static unsigned char f_ring[RING_SIZE];
 static unsigned char f_head, f_tail;
 static unsigned      f_count; /* wider than a byte: a full ring holds 256 */
@@ -121,7 +121,7 @@ int main(void)
     unsigned char v;
     int           first;
 
-    printf("ring_test: 6551 RX ring buffer (issue #5)\n");
+    printf("ring_test: 6551 RX ring buffer\n");
 
     /* --- Scenario A: overflow integrity (the reported bug) --------------- *
      * Push 300 bytes into a 256-slot ring. The first 256 carry values 0..255;

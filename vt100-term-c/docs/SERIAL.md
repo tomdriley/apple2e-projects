@@ -67,7 +67,7 @@ flowchart LR
   full ring holds 256 bytes, which a byte-wide counter cannot represent — it would
   wrap `255 -> 0` and the "full" guard could never fire. XON/XOFF normally keeps the
   ring well below full, so reaching this cap means the host ignored XOFF; the excess
-  is dropped cleanly instead of corrupting the buffer (issue #5).
+  is dropped cleanly instead of corrupting the buffer.
 
 ## Overrun: the recurring theme
 

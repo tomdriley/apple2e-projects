@@ -10,9 +10,9 @@ logic that a boot test cannot observe:
 | `client/vt100_test.py` | Cursor motion, keyboard | The terminal's own position reports and transmitted bytes |
 | `client/shell_test.py` | Rendered screen from real shell output | A snapshot of the 80×24 screen |
 | `client/conformance/runner.py` | Spec conformance across the VT100/ECMA-48 feature space | A spec-derived corpus graded by video-RAM, state-variable, and wire probes |
-| `tests/ring_test.c` (`make test`) | 6551 RX ring FIFO integrity under overflow (issue #5) | Compiled with cc65's `sim6502` target and run on the host under `sim65` — no ROMs, MAME, or serial socket |
+| `tests/ring_test.c` (`make test`) | 6551 RX ring FIFO integrity under overflow | Compiled with cc65's `sim6502` target and run on the host under `sim65` — no ROMs, MAME, or serial socket |
 
-The ring unit test exists because the RX ring-full bug (issue #5) is a
+The ring unit test exists because the RX ring-full bug is a
 buffer-overflow/type defect that a conformance corpus case cannot reliably
 observe — flow control (XON/XOFF) normally keeps the ring from ever filling. It
 mirrors the ring FIFO from `serial.c`, drives it past `RING_SIZE`, and asserts no
@@ -415,7 +415,7 @@ file under `tests/` that mirrors the logic, compile it for cc65's `sim6502`
 target, and run it under `sim65`, returning the failing-check count from `main()`
 so the build fails on a regression. Wire it into the `test` target in the
 [`Makefile`](../../Makefile) and run it with `make test`; the `hermetic-checks` CI
-job already invokes it. `tests/ring_test.c` (the issue #5 RX-ring test) is the
+job already invokes it. `tests/ring_test.c` (the RX-ring test) is the
 model to copy — include both the fixed and the pre-fix logic so the assertions
 provably distinguish them.
 
