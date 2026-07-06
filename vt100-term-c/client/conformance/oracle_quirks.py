@@ -72,6 +72,11 @@ QUIRK_IDS: dict[str, str] = {
         "pyte 0.8.2 does not implement SD (CSI T); it leaves the buffer "
         "unchanged, so it cannot model the spec-correct scroll-down this case "
         "expects.",
+    "report-da3-tertiary-consumed":
+        "pyte 0.8.2 does not consume tertiary DA (CSI = c): it drops the '=' "
+        "intermediate but prints the 'c' final byte as a literal glyph instead "
+        "of swallowing the whole sequence, so it cannot oracle the firmware's "
+        "clean consume.",
 }
 
 

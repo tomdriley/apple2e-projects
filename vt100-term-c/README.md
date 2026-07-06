@@ -21,18 +21,20 @@ that bridge into MAME and asserts what actually renders on the 80×24 screen.
 | Vertical motion | IND, RI (reverse index), NEL, with a settable scroll region (DECSTBM) |
 | Erase | ED 0/1/2, EL 0/1/2 |
 | Editing | IL, DL, ICH, DCH, ECH |
-| Attributes | SGR inverse video (colors/bold consumed) |
+| Attributes | SGR inverse video (colors, bold, and 256/truecolor consumed) |
 | Alt screen | Alternate screen buffer (`?1049`/`?47`/`?1047`) for full-screen apps |
 | Charset | DEC line-drawing (`ESC(0`/`ESC(B`), mapped to ASCII box characters |
-| Reports | DSR cursor-position report (ESC[6n), Device Attributes (ESC[c) |
+| String controls | OSC/DCS/PM/APC (`ESC]`, `ESC P`, `ESC^`, `ESC_`) swallowed until ST/BEL — window titles, DECRQSS, sixel payloads never render |
+| Reports | DSR cursor-position report (ESC[6n), primary (ESC[c) and secondary (ESC[>c) Device Attributes |
 | Modes / reset | Application cursor keys (DECCKM), RIS (`ESC c`), DECSTR soft reset |
 | Keyboard | Full ASCII; arrow keys → ESC[A..D (or ESC O A..D in application mode) |
 | Flow control | XON/XOFF plus RX draining during transmit and slow screen operations |
 | Serial | 9600 8N1, Super Serial Card slot auto-detection |
 
 Colors and other unimplemented SGR attributes are parsed and ignored so they
-never corrupt the screen. See [docs/TERMINAL.md](docs/TERMINAL.md) for the full
-sequence table.
+never corrupt the screen, and OSC/DCS/PM/APC strings are swallowed whole so their
+payloads never leak as literal text. See [docs/TERMINAL.md](docs/TERMINAL.md) for
+the full sequence table.
 
 ## Quick start
 

@@ -93,6 +93,28 @@
     "notes": "Secondary DA (ESC[>c) reports a VT220-family identity with a zero version field."
   },
   {
+    "id": "report-da3-tertiary-consumed",
+    "category": "reports",
+    "spec_ref": "ctlseqs: Tertiary DA (ESC[=c)",
+    "input": "\\e[=cAXIS",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "AXIS"
+        ]
+      ],
+      "absent": [
+        "=c",
+        "[=c"
+      ]
+    },
+    "notes": "Issue #3: tertiary DA (ESC[=c) is consumed cleanly -- the '=' and 'c' never print and the parser resumes normal rendering. The DCS-style tertiary reply is intentionally not implemented (see follow-ups)."
+  },
+  {
     "id": "report-decrqm-decckm-reset",
     "category": "reports",
     "spec_ref": "VT220-RM DECRQM/DECRPM",

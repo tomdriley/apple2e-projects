@@ -330,5 +330,63 @@
       }
     },
     "notes": "Ignored color does not prevent the supported inverse attribute from taking effect later."
+  },
+  {
+    "id": "sgr-256-index-7-not-inverse",
+    "category": "sgr-attributes",
+    "spec_ref": "xterm ctlseqs: 256-color SGR (38;5;Ps); issue #3",
+    "input": "\\e[38;5;7mIDX7",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "IDX7"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          4,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "Issue #3: the 256-color index argument (here 7) must be skipped, not misread as SGR 7 (inverse). Fails on the pre-fix parser, which treated the trailing 7 as inverse-on."
+  },
+  {
+    "id": "sgr-truecolor-component-7-not-inverse",
+    "category": "sgr-attributes",
+    "spec_ref": "xterm ctlseqs: truecolor SGR (38;2;R;G;B); issue #3",
+    "input": "\\e[38;2;7;7;7mRGB",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "RGB"
+        ]
+      ],
+      "attr": [
+        [
+          1,
+          1,
+          3,
+          "normal"
+        ]
+      ],
+      "state": {
+        "attr_inverse": 0
+      }
+    },
+    "notes": "Issue #3: truecolor R/G/B components (here 7) must be skipped, not misread as SGR 7 (inverse). Fails on the pre-fix parser, which read a 7 component as inverse-on."
   }
 ]
