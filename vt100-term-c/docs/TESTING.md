@@ -45,8 +45,7 @@ runs both:
 | `hermetic-checks` | no | builds `VT100.BIN` with the pinned cc65 and runs `selftest.py` + `oracle.py --audit`. A fast, portable pre-check that runs on **every** push/PR, including fork PRs. |
 | `mame-conformance` | yes | boots the firmware in headless MAME against the **actual Apple IIe ROMs** and runs the full `runner.py --target mame` suite; uploads `build/conformance.json` + failing-screen artifacts. This is the firmware regression gate. |
 
-`mame-conformance` fails the build on any REGRESSION or ERROR (not yet `--strict` —
-see the repository's follow-up issues).
+`mame-conformance` fails the build on any REGRESSION or ERROR (not yet `--strict`).
 
 ### ROMs are provided privately, never committed
 
@@ -266,10 +265,10 @@ protocol doc can't drift into fiction.
 
 ### Reference oracle — `conformance/oracle.py`
 
-Issue #18 adds an independent reference oracle ([pyte](https://github.com/selectel/pyte),
-pinned in `client/requirements.txt`) that cross-checks both the firmware and the authored
+An independent reference oracle ([pyte](https://github.com/selectel/pyte),
+pinned in `client/requirements.txt`) cross-checks both the firmware and the authored
 corpus. The methodology is in
-[docs/CONFORMANCE.md](CONFORMANCE.md#reference-oracle-differential-testing-issue-18); this
+[docs/CONFORMANCE.md](CONFORMANCE.md#reference-oracle-differential-testing); this
 is how to run it.
 
 ```sh

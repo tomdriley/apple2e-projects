@@ -48,12 +48,12 @@ in the private-use space ECMA-48 reserves with the `?` marker: DECCKM `?1`, DECO
 |-------|------------|-----------|
 | vttest (Thomas Dickey, Invisible Island) | Interactive/visual VT100..VT520 + xterm tester; a human eyeballs the screen | Not automatable against headless firmware. Use as a **catalog** of cases and categories to include. |
 | esctest2 (George Nachman + Thomas Dickey) | Python, data-driven, fully automatic; asserts via cursor-position reports, DECRQCRA rectangle checksums, and screen rectangle reads; tracks per-terminal known bugs with `knownBug` (xfail) | **Architectural template**: declarative cases, machine assertions, xfail. Mine its category list. Do not run directly: it drives a terminal over a pty and relies on DECRQCRA, which this firmware does not implement. |
-| pyte / libvterm / real xterm | Executable reference emulators that can generate expected screens | **pyte is implemented** as an independent differential oracle (issue #18) — see [Reference-oracle differential testing](#reference-oracle-differential-testing-issue-18) below. libvterm / xterm remain optional future references. |
+| pyte / libvterm / real xterm | Executable reference emulators that can generate expected screens | **pyte is implemented** as an independent differential oracle — see [Reference-oracle differential testing](#reference-oracle-differential-testing) below. libvterm / xterm remain optional future references. |
 
 ## How we grade — automated probes, no human review
 
 Expected values are authored from the spec and committed as data. Every case is
-checked by machine; no human eyeballing, and no reference emulator in #13.
+checked by machine; no human eyeballing, and no reference emulator in the MAME runner.
 
 | Channel | Mechanism | Asserts |
 |---------|-----------|---------|
@@ -112,7 +112,7 @@ proves** so each case lands in an honest bucket:
 | `basis` | Meaning | Counts toward |
 |---------|---------|---------------|
 | `spec` | Strict VT100/ECMA-48 behaviour a conformant reference terminal would also produce. Real conformance (or, if unsupported, a clean XFAIL). | spec + profile + behavioural |
-| `profile` | A **visible**, ECMA-permitted, documented Apple IIe degradation a reference terminal would *not* produce (DEC line-draw → ASCII fold, issue #12). | profile + behavioural |
+| `profile` | A **visible**, ECMA-permitted, documented Apple IIe degradation a reference terminal would *not* produce (DEC line-draw → ASCII fold). | profile + behavioural |
 | `tolerance` | An unimplemented sequence **absorbed as an observable no-op** in this context (bold/underline/colour consumed; SO/SI with the default G1). Proves "does not corrupt", not "implements". | behavioural |
 | `degenerate` | Passes **only because a firmware default coincides** with the tested direction (a mode's reset direction while the mode is ignored; selective erase while no cell is DECSCA-protected). Does not prove the feature. | behavioural |
 | `unobservable` | The real effect cannot be probed (DECTCEM cursor visibility). Scored **SKIP** so an untestable claim is never counted as conformance. | nothing (SKIP) |
@@ -165,16 +165,16 @@ review. In CI this runs in the **`mame-conformance` job**, against the real Appl
 ROMs with the pinned cc65/MAME toolchain; see
 [docs/TESTING.md](TESTING.md#continuous-integration--reproducible-toolchain).
 
-## Reference-oracle differential testing (issue #18)
+## Reference-oracle differential testing
 
 The authored `expect` values are the human-curated truth, but the same team wrote the
 firmware *and* the expectations, so a shared misreading of the spec would be invisible to
-the #13 runner. Issue #18 adds an **independent oracle**:
+the conformance runner. An **independent oracle** is added:
 [pyte](https://github.com/selectel/pyte), a pure-Python ECMA-48 screen model with no
 knowledge of our firmware or our authored expectations. It plugs in as another render
 target (`client/conformance/target_pyte.py`, behind the same `render(bytes) -> Screen`
 interface from `target_base.py`) and is driven by a separate entry point,
-`client/conformance/oracle.py`, so it never edits the #13 runner.
+`client/conformance/oracle.py`, so it never edits the MAME runner.
 
 For a case there are up to three screens: **E** (authored `expect`), **F** (firmware, via
 MAME) and **P** (pyte). That yields two comparisons on top of the runner's F-vs-E:
@@ -204,7 +204,7 @@ a genuine firmware/spec divergence — and each is triaged by hand.
 
 ### F-vs-P differential
 
-The differential reuses the #13 runner's classifier verbatim: it renders **F** (MAME) and
+The differential reuses runner.py's classifier verbatim: it renders **F** (MAME) and
 **P** (pyte), diffs the glyph + inverse + cursor planes with `diff_screens`, and feeds the
 result through the same `classify` / `summarize` that `runner.py` uses, so a divergence is
 labelled with the identical PASS / REGRESSION / XFAIL / UNEXPECTED-PASS / SKIP vocabulary
@@ -252,7 +252,7 @@ way the case's real bytes never do, so a screen diff there is not a valid oracle
   when literal text follows; the fix is to encode ST as `\x1b\x5c`.
 
 
-Design note: pyte **augments**, it does not replace. The issue's literal "generate the
+Design note: pyte **augments**, it does not replace. The original proposal's literal "generate the
 `expected` field from pyte" is deliberately rejected — that would discard the curated
 corpus and inherit pyte's quirks. The differential is structured around a single
 `PyteTarget` today, but the diff/classify path is target-agnostic, so a second reference
@@ -282,4 +282,4 @@ flowchart LR
 - DEC STD 070 (Video Systems Reference Manual, 1991) — via bitsavers
 - vttest: https://invisible-island.net/vttest/vttest.html
 - esctest2: https://github.com/ThomasDickey/esctest2
-- pyte (independent oracle, #18): https://github.com/selectel/pyte
+- pyte (independent oracle): https://github.com/selectel/pyte
