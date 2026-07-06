@@ -10,19 +10,35 @@
 #   make debug  — build + launch in MAME with the debugger
 #   make clean  — remove build/ directory
 
-# Git Bash — 8.3 short path avoids the space in "Program Files"
-SHELL       := C:/PROGRA~1/Git/bin/bash.exe
-.SHELLFLAGS := -c
-
 # --- Tool paths -----------------------------------------------------------
-CC65    := C:/cc65/bin/cc65.exe
-CA65    := C:/cc65/bin/ca65.exe
-LD65    := C:/cc65/bin/ld65.exe
-AC      := C:/AppleCommander/ac.cmd
-MAME    := C:/mame/mame.exe
-ROMPATH := C:/mame/roms
-# none.lib = bare 6502 runtime (cc65 helpers), no OS/platform startup
-NONELIB := C:/cc65/lib/none.lib
+# Windows uses absolute tool paths (the Git-Bash shell's 8.3 short path avoids
+# the space in "Program Files"). Linux/CI resolves the tools from PATH. Every
+# entry is overridable from the environment or the make command line
+# (e.g. `make CC65=/opt/cc65/bin/cc65`), so CI can inject its own toolchain.
+ifeq ($(OS),Windows_NT)
+  SHELL   := C:/PROGRA~1/Git/bin/bash.exe
+  CC65    ?= C:/cc65/bin/cc65.exe
+  CA65    ?= C:/cc65/bin/ca65.exe
+  LD65    ?= C:/cc65/bin/ld65.exe
+  AC      ?= C:/AppleCommander/ac.cmd
+  MAME    ?= C:/mame/mame.exe
+  ROMPATH ?= C:/mame/roms
+  # none.lib = bare 6502 runtime (cc65 helpers), no OS/platform startup
+  NONELIB ?= C:/cc65/lib/none.lib
+else
+  SHELL   := /bin/bash
+  CC65    ?= cc65
+  CA65    ?= ca65
+  LD65    ?= ld65
+  AC      ?= ac
+  MAME    ?= mame
+  ROMPATH ?= $(HOME)/.mame/roms
+  # none.lib = bare 6502 runtime (cc65 helpers), no OS/platform startup.
+  # Default to the pinned source build installed by scripts/setup-toolchain.sh;
+  # override (e.g. NONELIB=/usr/share/cc65/lib/none.lib) for a system cc65.
+  NONELIB ?= /opt/cc65/share/cc65/lib/none.lib
+endif
+.SHELLFLAGS := -c
 
 # --- Build artefacts -------------------------------------------------------
 BUILDDIR := build

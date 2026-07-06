@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import socket
 import statistics
@@ -64,8 +65,8 @@ import pathlib
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
-MAME = r"C:\mame\mame.exe"
-ROMPATH = r"C:\mame\roms"
+MAME = os.environ.get("MAME", r"C:\mame\mame.exe")
+ROMPATH = os.environ.get("MAME_ROMPATH", r"C:\mame\roms")
 DISK = str(ROOT / "build" / "vt100.dsk")
 WATCH_LUA = str(HERE / "screen_watch.lua")
 PROBE_LUA = str(HERE / "bench_probe.lua")

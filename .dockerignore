@@ -1,0 +1,6 @@
+# Keep the Docker build context tiny and ROM-free: the image only needs the
+# installer script. Everything else (source, ROMs, .git, build artifacts) is
+# excluded so nothing sensitive can leak into an image layer.
+*
+!scripts
+!scripts/**

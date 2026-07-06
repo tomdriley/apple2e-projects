@@ -1,0 +1,5 @@
+# Keep shell scripts and container/CI files LF so they run on Linux runners,
+# containers, and Codespaces regardless of the checkout platform.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.dockerfile    text eol=lf
