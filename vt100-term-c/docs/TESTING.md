@@ -247,7 +247,9 @@ without booting MAME. It also guards the two report-channel fixes:
 equality (a doubled or malformed reply fails, with only a single trailing
 readiness-CPR allowance), and `test_readiness_probe_not_appended_on_trailing_query`
 proves `MameTarget` detects a case's own trailing DSR/DA/DECRQM/DECRQSS query and so
-never doubles it with its `ESC[6n` pacing probe.
+never doubles it with its `ESC[6n` pacing probe. (That pacing probe and its
+readiness CPR are the windowed ready-handshake; [PROTOCOL.md §4](PROTOCOL.md)
+explains what DSR is and why the harness uses it to pace.)
 
 ### Transport + wire-protocol test — `client/serial_link_test.py`
 
