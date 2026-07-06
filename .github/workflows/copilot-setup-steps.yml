@@ -1,0 +1,50 @@
+name: "Copilot Setup Steps"
+
+# Pre-provisions the Copilot cloud agent's environment with the same pinned
+# toolchain used by CI and Codespaces (dev == CI == agent). Runs automatically
+# when the setup or toolchain scripts change so it is easy to validate, and can
+# be run on demand from the Actions tab.
+#
+# NOTE: to take effect for the agent, this file must be on the default branch,
+# and the job MUST be named `copilot-setup-steps`.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - scripts/setup-toolchain.sh
+      - scripts/provision-roms.sh
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - scripts/setup-toolchain.sh
+      - scripts/provision-roms.sh
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      MAME: /usr/local/bin/mame
+      NONELIB: /opt/cc65/share/cc65/lib/none.lib
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install pinned toolchain (cc65 + MAME + AppleCommander + pyte)
+        run: bash scripts/setup-toolchain.sh
+
+      # Tier 2 (real MAME) needs the private Apple IIe ROMs. Decode them from the
+      # secret into a fixed path. Best-effort: if the secret is unavailable the
+      # agent still has the full toolchain and can run Tier 1 (hermetic) work.
+      - name: Provision Apple IIe ROMs (best-effort)
+        continue-on-error: true
+        env:
+          MAME_ROMS_TGZ_B64: ${{ secrets.MAME_ROMS_TGZ_B64 }}
+        run: |
+          set -euo pipefail
+          romp="$(bash scripts/provision-roms.sh /opt/mame-roms)"
+          echo "MAME_ROMPATH=$romp" >> "$GITHUB_ENV"
+          echo "Provisioned Apple IIe ROMs at $romp"

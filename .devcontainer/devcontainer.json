@@ -1,0 +1,30 @@
+{
+  // Dev Container / Codespaces built from the pinned toolchain Dockerfile, so
+  // Codespaces == local == CI == cloud agent. The image contains NO Apple ROMs.
+  "name": "Apple IIe VT100 toolchain",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+
+  // Where the firmware/tests look for the Apple IIe ROMs inside the container.
+  "containerEnv": {
+    "MAME_ROMPATH": "/opt/mame-roms"
+  },
+
+  // For a *local* Dev Container, pass the ROM bundle from your host shell:
+  //   export MAME_ROMS_TGZ_B64="$(base64 -w0 roms.tgz)"
+  // In Codespaces, set a Codespaces secret named MAME_ROMS_TGZ_B64 instead
+  // (it is injected automatically; this mapping is a harmless no-op there).
+  "remoteEnv": {
+    "MAME_ROMS_TGZ_B64": "${localEnv:MAME_ROMS_TGZ_B64}"
+  },
+
+  // Alternatively, bind-mount an existing rompath instead of using the secret.
+  // Uncomment and adjust the host path (example is a Windows host):
+  // "mounts": [
+  //   "source=C:\\mame\\roms,target=/opt/mame-roms,type=bind,consistency=cached"
+  // ],
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
+}

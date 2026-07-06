@@ -1,0 +1,62 @@
+name: Toolchain image
+
+# Builds the pinned toolchain container from the Dockerfile (which reuses
+# scripts/setup-toolchain.sh). On pushes/PRs that touch the image inputs it
+# builds to validate the Dockerfile; on the default branch it also publishes to
+# GHCR so Codespaces / local dev can pull a prebuilt image instead of building.
+on:
+  push:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - scripts/setup-toolchain.sh
+      - .github/workflows/toolchain-image.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - scripts/setup-toolchain.sh
+      - .github/workflows/toolchain-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: toolchain-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/tomdriley/apple2e-toolchain
+
+jobs:
+  build:
+    name: Build (and publish on default branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build toolchain image
+        run: docker build -t "$IMAGE:$GITHUB_SHA" -t "$IMAGE:latest" .
+
+      - name: Smoke-test the image toolchain
+        run: |
+          docker run --rm "$IMAGE:$GITHUB_SHA" bash -lc '
+            set -e
+            cc65 --version
+            mame -version
+            ac --version || true
+            python3 -c "import pyte; print(\"pyte ok\")"
+            test -f "$NONELIB" && echo "none.lib present: $NONELIB"'
+
+      - name: Publish to GHCR (default branch only)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:latest"
