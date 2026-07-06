@@ -1,6 +1,8 @@
 name: CI
 
-# Regression gate for the Apple IIe VT100 terminal firmware (issue #22).
+# Regression gate for the Apple IIe VT100 terminal firmware (issue #22) plus the
+# sibling cc65 example projects (issue #36), all built with the same pinned
+# toolchain (scripts/setup-toolchain.sh) so regressions are caught repo-wide.
 #   hermetic-checks: builds the firmware with the pinned cc65 toolchain and runs
 #                    the ROM-free conformance selftest + pyte oracle audit. A fast
 #                    pre-check that runs first so portable regressions fail early.
@@ -9,6 +11,13 @@ name: CI
 #                     the core of the gate -- the only job that exercises the real
 #                     firmware. It requires the private ROM secret and always runs;
 #                     if the secret is missing, provisioning fails the job loudly.
+#   sibling-changes / sibling-builds: build the other cc65 projects (hello-*,
+#                     keyboard-test-*, pread-test-c, print-all-c, snake-*,
+#                     ssc-serial-c) with the same pinned toolchain. A matrix keeps
+#                     it DRY and paths filters run each project's job only when its
+#                     own files (or the shared toolchain/workflow) change. These
+#                     builds need no ROMs; ssc-serial-c also runs its ROM-free
+#                     round-trip protocol test.
 on:
   push:
   pull_request:
@@ -100,3 +109,92 @@ jobs:
             vt100-term-c/build/vt100.map
             vt100-term-c/build/*.log
           if-no-files-found: ignore
+
+  # -- Sibling cc65 projects (issue #36) -------------------------------------
+  # Detect which sibling projects a push/PR actually touched so each one only
+  # builds when its own files -- or the shared toolchain/workflow -- change.
+  # `changes` is a JSON array of the matched project names, fed to the matrix.
+  sibling-changes:
+    name: Detect changed sibling projects
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      projects: ${{ steps.filter.outputs.changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Filter by project directory
+        id: filter
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          # A change to the shared toolchain or this workflow rebuilds every
+          # project; otherwise a project builds only when its own files change.
+          filters: |
+            shared: &shared
+              - 'scripts/**'
+              - '.github/workflows/ci.yml'
+            hello-asm:
+              - *shared
+              - 'hello-asm/**'
+            hello-c:
+              - *shared
+              - 'hello-c/**'
+            keyboard-test-asm:
+              - *shared
+              - 'keyboard-test-asm/**'
+            keyboard-test-c:
+              - *shared
+              - 'keyboard-test-c/**'
+            pread-test-c:
+              - *shared
+              - 'pread-test-c/**'
+            print-all-c:
+              - *shared
+              - 'print-all-c/**'
+            snake-asm:
+              - *shared
+              - 'snake-asm/**'
+            snake-c:
+              - *shared
+              - 'snake-c/**'
+            ssc-serial-c:
+              - *shared
+              - 'ssc-serial-c/**'
+
+  sibling-builds:
+    name: Build ${{ matrix.project }}
+    needs: sibling-changes
+    # The 'shared' filter is only there to fan out into the per-project keys, so
+    # drop it from the matrix. Skip the whole job when nothing relevant changed.
+    if: ${{ needs.sibling-changes.outputs.projects != '[]' && needs.sibling-changes.outputs.projects != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.sibling-changes.outputs.projects) }}
+        exclude:
+          - project: shared
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install pinned toolchain (cc65 + MAME + AppleCommander + pyte)
+        run: bash scripts/setup-toolchain.sh
+
+      - name: Build ${{ matrix.project }}
+        working-directory: ${{ matrix.project }}
+        run: |
+          make
+          echo "Build artifacts for ${{ matrix.project }}:"
+          ls -l build
+
+      # ssc-serial-c ships a round-trip protocol test. Its default 'fake' mode
+      # drives the real client against a byte-level stand-in for the 6502 code,
+      # so it needs no emulator or ROMs and runs here as a portable regression
+      # gate. (The --mame mode needs the a2ssc ROM and is exercised locally.)
+      - name: Round-trip protocol test (ssc-serial-c)
+        if: ${{ matrix.project == 'ssc-serial-c' }}
+        working-directory: ssc-serial-c
+        run: python3 client/roundtrip_test.py

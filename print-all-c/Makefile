@@ -7,17 +7,30 @@
 #   make debug  — build + launch in MAME with debugger
 #   make clean  — remove build/ directory
 
-# Git Bash — 8.3 short path avoids the space in "Program Files"
-SHELL       := C:/PROGRA~1/Git/bin/bash.exe
-.SHELLFLAGS := -c
-
 # --- Tool paths -----------------------------------------------------------
-CC65    := C:/cc65/bin/cc65.exe
-CA65    := C:/cc65/bin/ca65.exe
-LD65    := C:/cc65/bin/ld65.exe
-MAME    := C:/mame/mame.exe
-# none.lib = bare 6502 runtime (cc65 helpers), no OS/platform startup
-NONELIB := C:/cc65/lib/none.lib
+# Windows uses absolute tool paths (the Git-Bash shell's 8.3 short path avoids
+# the space in "Program Files"). Linux/CI resolves the tools from PATH. Every
+# entry is overridable from the environment or the make command line, so CI can
+# inject its own toolchain (see scripts/setup-toolchain.sh).
+ifeq ($(OS),Windows_NT)
+  SHELL   := C:/PROGRA~1/Git/bin/bash.exe
+  CC65    ?= C:/cc65/bin/cc65.exe
+  CA65    ?= C:/cc65/bin/ca65.exe
+  LD65    ?= C:/cc65/bin/ld65.exe
+  MAME    ?= C:/mame/mame.exe
+  # none.lib = bare 6502 runtime (cc65 helpers), no OS/platform startup
+  NONELIB ?= C:/cc65/lib/none.lib
+else
+  SHELL   := /bin/bash
+  CC65    ?= cc65
+  CA65    ?= ca65
+  LD65    ?= ld65
+  MAME    ?= mame
+  # none.lib default from scripts/setup-toolchain.sh (pinned cc65 source build);
+  # override (e.g. NONELIB=/usr/share/cc65/lib/none.lib) for a system cc65.
+  NONELIB ?= /opt/cc65/share/cc65/lib/none.lib
+endif
+.SHELLFLAGS := -c
 
 # --- Build artefacts -------------------------------------------------------
 BUILDDIR := build
