@@ -24,6 +24,14 @@ source of truth:
   ever one toolchain definition to keep current. It prints every tool version and
   the `VT100.BIN` SHA-256 so runs are auditable.
 
+To avoid rebuilding cc65 from source (~1–3 min) on every run, CI installs it into a
+user-writable `CC65_PREFIX` (`/home/runner/cc65` instead of the root-owned default
+`/opt/cc65`) and restores it with `actions/cache`. The cache key is pinned to the
+cc65 commit (`cc3c40c54`, plus a hash of `setup-toolchain.sh`), so an unchanged
+toolchain restores byte-for-byte while any pin change forces a clean rebuild —
+caching is a speed-up only and never weakens determinism. On a cache hit the
+installer detects the already-present cc65 and skips the build.
+
 ### The CI jobs
 
 Booting the firmware in **real MAME against the actual Apple IIe ROMs is the core
