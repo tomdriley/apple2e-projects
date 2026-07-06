@@ -370,7 +370,7 @@
         "DELME"
       ]
     },
-    "notes": "Positive guard for the ED-erase-in-place invariant (issue #29): ED 2 erases the whole display but, per ECMA-48 §8.3.39, must not move the active position. With the cursor parked at row 10 col 60, ESC[2J leaves it there rather than homing to (1,1). Fails against the old cursor-homing firmware and passes with the in-place erase; the absent DELME proves the erase actually ran."
+    "notes": "Positive guard for the ED-erase-in-place invariant: ED 2 erases the whole display but, per ECMA-48 §8.3.39, must not move the active position. With the cursor parked at row 10 col 60, ESC[2J leaves it there rather than homing to (1,1). Fails against the old cursor-homing firmware and passes with the in-place erase; the absent DELME proves the erase actually ran."
   },
   {
     "id": "erase-decsed-two-keeps-cursor",
@@ -388,6 +388,6 @@
         "GONE"
       ]
     },
-    "notes": "Positive guard for the DECSED-erase-in-place invariant (issue #29): with no DECSCA-protected cells DECSED 2 clears the display identically to ED 2, and per ECMA-48 §8.3.39 the active position is unchanged. With the cursor parked at row 6 col 45, ESC[?2J leaves it there rather than homing to (1,1). Fails against the old cursor-homing firmware and passes with the in-place erase; the absent GONE proves the erase actually ran."
+    "notes": "Positive guard for the DECSED-erase-in-place invariant: with no DECSCA-protected cells DECSED 2 clears the display identically to ED 2, and per ECMA-48 §8.3.39 the active position is unchanged. With the cursor parked at row 6 col 45, ESC[?2J leaves it there rather than homing to (1,1). Fails against the old cursor-homing firmware and passes with the in-place erase; the absent GONE proves the erase actually ran."
   }
 ]

@@ -232,14 +232,14 @@ way the case's real bytes never do, so a screen diff there is not a valid oracle
 - **Reference agreement at the first oracle run: 98.5%** (131/133 strict-spec cases);
   the two `spec-suspect`s were the firmware/spec question below (the ED/DECSED cursor
   homing, now **fixed** — see the next bullet) and one mis-authored terminator. After the
-  issue #29 fix plus the two new guard cases, the current audit agreement is **133/134**,
+  ED/DECSED fix plus the two new guard cases, the current audit agreement is **133/134**,
   with only the terminator case (`osc-title-st-following-text`) still outstanding.
 - **Differential: 3 REGRESSIONs, all one root cause** — the firmware homed the cursor to
   (1,1) on erase-all (`ED` / `DECSED` with parameter `2`), while ECMA-48 §8.3.39 (ED) does
   not move the cursor and pyte leaves it put. This was a genuine firmware/spec
   non-conformance, not a rendering dialect: ECMA-48 does **not** permit ED to move the
   cursor, so it could not simply be relabelled `basis: profile` (which is reserved for
-  ECMA-*permitted* visible degradations). **Resolved (issue #29):** the firmware now erases
+  ECMA-*permitted* visible degradations). **Resolved:** the firmware now erases
   the display in place and leaves the active position where it was — the `J` ED/DECSED
   param-2 path restores the cursor after the shared `scr_clear_all()` (which still homes
   for RIS/init/alt-screen). The three affected cases (`cur-vt100-clear-homes`,
