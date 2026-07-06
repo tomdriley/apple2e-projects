@@ -104,7 +104,7 @@ operate within the cursor's row.
 | `ESC [ > c` | Secondary DA | Sends `ESC [ > 1 ; 0 ; 0 c` (VT220-family, version 0) |
 | `ESC [ = c` | Tertiary DA | Consumed cleanly; no reply (the DCS-form report is not implemented) |
 | `ESC [ ? 1 h` / `l` | DECCKM | Enable / disable application cursor keys |
-| `ESC [ ? 47/1047/1049 h` / `l` | Alt screen | Switch to / from the alternate screen buffer (save + restore) |
+| `ESC [ ? 47/1047/1049 h` / `l` | Alt screen | Switch to / from the alternate screen buffer (save + restore); the active SGR attribute is reset to normal on both enter and exit |
 | `ESC [ ! p` | DECSTR | Soft reset: attributes, charset, modes, region (no clear) |
 | `ESC [ Ps m` | SGR | `7` = inverse video on, `0`/`27` = off; colors, bold, and 256/truecolor (`38;5;Ps` / `38;2;R;G;B`, and the `48;…` background forms) are consumed |
 
@@ -130,6 +130,12 @@ insert/delete, and the alternate-screen save/restore. Insert/delete read glyphs
 back from the video page when they shift cells. Because the non-enhanced apple2e
 character set has no inverse lower case, inverse lower-case text shows as inverse
 **upper** case.
+
+Switching the alternate screen on or off (`ESC [ ? 47/1047/1049 h` / `l`) resets
+the active SGR attribute to normal. Full-screen apps such as `less` and `man`
+select inverse for a status line and then quit via the alternate-screen reset
+without first clearing it; resetting on the transition keeps that inverse
+attribute from leaking onto the restored shell text.
 
 Colors, bold, and any other SGR attributes are parsed and discarded, as is any
 unrecognized final byte. 256-color and truecolor selectors (`38;5;Ps`,
