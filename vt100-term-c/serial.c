@@ -24,9 +24,13 @@
 static volatile unsigned char *acia = (volatile unsigned char *)0xC0A8; /* slot 2 */
 static unsigned char           found_slot;
 
-/* Receive ring buffer with XON/XOFF flow control. */
+/* Receive ring buffer with XON/XOFF flow control. r_head/r_tail are
+ * unsigned char so they wrap mod RING_SIZE (256) for free; r_count is wider
+ * because a full ring holds RING_SIZE bytes, which an unsigned char cannot
+ * represent (it would wrap 255->0 and the "full" guard could never fire). */
 static unsigned char ring[RING_SIZE];
-static unsigned char r_head, r_tail, r_count;
+static unsigned char r_head, r_tail;
+static unsigned      r_count;
 static unsigned char xoff_sent;
 
 /* Scan slots 7..1 for the SSC firmware signature (Pascal 1.1 protocol bytes).
@@ -65,7 +69,7 @@ void serial_put(char c)
          * ring. A reply like the ESC[?1;0c device-attributes answer is several
          * bytes; without this the host's next bytes would overrun the 6551's
          * one-byte receive register while we sit here waiting to transmit. */
-        if ((acia[1] & ST_RDRF) != 0 && r_count != RING_SIZE) {
+        if ((acia[1] & ST_RDRF) != 0 && r_count < RING_SIZE) {
             ring[r_head++] = acia[0];
             ++r_count;
         }
@@ -79,7 +83,7 @@ void serial_put(char c)
  * receive register never overruns while we are busy drawing. */
 void serial_pump(void)
 {
-    while ((acia[1] & ST_RDRF) != 0 && r_count != RING_SIZE) {
+    while ((acia[1] & ST_RDRF) != 0 && r_count < RING_SIZE) {
         ring[r_head++] = acia[0];
         ++r_count;
     }
@@ -89,7 +93,10 @@ void serial_pump(void)
     }
 }
 
-unsigned char serial_rx_ready(void) { return r_count; }
+/* Returns the ring occupancy. The public type is unsigned char and a full ring
+ * is RING_SIZE (256), so clamp to 255 to avoid truncating that one value to 0
+ * (callers use the result only as a "bytes waiting" boolean). */
+unsigned char serial_rx_ready(void) { return (unsigned char)(r_count > 255 ? 255 : r_count); }
 
 int serial_getch(void)
 {
