@@ -30,15 +30,25 @@ Booting the firmware in **real MAME against the actual Apple IIe ROMs is the cor
 of the gate** — it is the only job that exercises the real firmware. A fast,
 ROM-free job runs first so portable regressions (and fork PRs, which have no ROM
 secret) are still caught. [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
-runs both:
+runs these jobs:
 
 | Job | ROMs? | What it does |
 |-----|-------|--------------|
 | `hermetic-checks` | no | builds `VT100.BIN` with the pinned cc65 and runs `selftest.py` + `oracle.py --audit`. A fast, portable pre-check that runs on **every** push/PR, including fork PRs. |
 | `mame-conformance` | yes | boots the firmware in headless MAME against the **actual Apple IIe ROMs** and runs the full `runner.py --target mame` suite; uploads `build/conformance.json` + failing-screen artifacts. This is the firmware regression gate. |
+| `sibling-changes` | no | detects which sibling cc65 projects a push/PR touched (via path filters) and feeds them to the build matrix. |
+| `sibling-builds` | no | a DRY matrix that builds each **changed** sibling project (`hello-asm`, `hello-c`, `keyboard-test-asm`, `keyboard-test-c`, `pread-test-c`, `print-all-c`, `snake-asm`, `snake-c`, `ssc-serial-c`) with the same pinned toolchain, and runs `ssc-serial-c`'s ROM-free round-trip protocol test. |
 
 `mame-conformance` fails the build on any REGRESSION or ERROR (not yet `--strict` —
 see the repository's follow-up issues).
+
+The sibling jobs (issue #36) extend the pinned toolchain across the whole
+monorepo so a regression in any example is caught, not just `vt100-term-c`. Each
+project's job only runs when its own files — or the shared toolchain /
+workflow — change, so unrelated pushes stay cheap. These builds need no ROMs;
+`ssc-serial-c`'s round-trip test runs its default ROM-free `fake` mode (the
+`--mame` mode needs the separate `a2ssc` Super Serial Card ROM and is exercised
+locally).
 
 ### ROMs are provided privately, never committed
 
