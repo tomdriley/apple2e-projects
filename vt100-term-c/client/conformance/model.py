@@ -42,7 +42,8 @@ VALID_BASIS = ("spec", "profile", "tolerance", "degenerate", "unobservable")
 # Every key the ``expect`` block may contain. The loader validates against this
 # set so a typo in a corpus file is caught at load time rather than silently
 # skipped (a silently-ignored expectation would inflate the conformance score).
-EXPECT_KEYS = ("cursor", "rows", "cells", "has", "absent", "attr", "state", "report")
+EXPECT_KEYS = ("cursor", "rows", "cells", "has", "absent", "attr", "state",
+               "report", "report_absent")
 
 ATTR_KINDS = ("inverse", "normal")
 
@@ -251,6 +252,15 @@ def check(screen: Screen, expect: dict) -> list[str]:
             fails.append(f"report: expected exactly {want_bytes!r} "
                          f"got {got!r}")
 
+    # report_absent: [pattern, ...] -- each must NOT appear on the wire. Locks
+    # "silently consumed" sequences (e.g. tertiary DA ESC[=c) that must not
+    # emit a spurious reply.
+    for pat in expect.get("report_absent", []):
+        bad_bytes = decode(pat)
+        if bad_bytes in screen.reports:
+            fails.append(f"report_absent: {bad_bytes!r} unexpectedly "
+                         f"in {screen.reports!r}")
+
     return fails
 
 
@@ -287,6 +297,11 @@ def _validate(case: Case) -> list[str]:
             decode(case.expect["report"])
         except ValueError as exc:
             errs.append(f"{case.id}: bad report escape: {exc}")
+    for pat in case.expect.get("report_absent", []):
+        try:
+            decode(pat)
+        except ValueError as exc:
+            errs.append(f"{case.id}: bad report_absent escape: {exc}")
     return errs
 
 

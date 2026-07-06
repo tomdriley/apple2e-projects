@@ -48,6 +48,7 @@ EXPECT_CAPABILITY = {
     "attr": "inverse",
     "state": "state",
     "report": "reports",
+    "report_absent": "reports",
 }
 
 
