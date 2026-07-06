@@ -175,11 +175,11 @@
     "status": "supported",
     "expect": {
       "cursor": [
-        1,
-        1
+        5,
+        10
       ]
     },
-    "notes": "Verified cursor expectation ported from vt100_test.py CURSOR_TESTS entry clear_homes."
+    "notes": "ED 2 (erase-all) must not move the active position (ECMA-48 §8.3.39); the cursor stays where CUP left it, at row 5 col 10, rather than homing to (1,1)."
   },
   {
     "id": "cur-vt100-back-clamp",
