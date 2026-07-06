@@ -233,7 +233,7 @@ def check(screen: Screen, expect: dict) -> list[str]:
     if "report" in expect:
         want_bytes = decode(expect["report"])
         got = screen.reports
-        # EXACT match, not containment (issue #31). Containment quietly accepted a
+        # EXACT match, not containment. Containment quietly accepted a
         # doubled or malformed firmware reply (e.g. the reply concatenated with a
         # harness-injected readiness CPR, or the same reply emitted twice), so a
         # missing/garbled reply that merely *contained* the wanted bytes as a
