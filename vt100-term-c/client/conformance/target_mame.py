@@ -12,9 +12,12 @@ and drives each case through three machine oracles, with no human in the loop:
     firmware state). We wait for a snapshot taken strictly *after* the input has
     rendered, so the read-back always reflects the settled screen.
   * **wire read-back** -- the windowed-lossless ``bench.Terminal`` sender appends
-    an ESC[6n to every window; the reply (and any DA/DSR the case itself emits)
-    is drained by ``Terminal``'s background thread and read via ``peek()``. The
-    last CPR is the exact post-input cursor; the raw bytes satisfy ``report``.
+    an ESC[6n to every window *except* a final window that already ends in the
+    case's own report query (DSR/DA/DECRQM/DECRQSS): there the case's bytes are
+    sent raw so the probe never doubles the reply or contaminates the glyph plane
+    (issue #31). The reply (and any DA/DSR the case itself emits) is drained by
+    ``Terminal``'s background thread and read via ``peek()``. The last CPR is the
+    exact post-input cursor; the raw bytes satisfy ``report``.
   * **state probe** -- the firmware's cursor/attribute/scroll-region variables
     are exposed (non-static) and their addresses read from ``build/vt100.lbl``
     (ld65 ``-Ln``); we hand the probe their addresses via ``build/conf_syms.txt``.
@@ -56,6 +59,21 @@ STATE_SYMS = (
 )
 # VICE label line, e.g.  al 001EDE ._cur_col
 _LBL_RE = re.compile(r"^al\s+([0-9A-Fa-f]+)\s+\._(\w+)\s*$")
+
+# A trailing report-eliciting query the firmware answers over the wire: DSR
+# (CSI Ps n) / DA (CSI Ps c), DECRQM (CSI Ps $ p), or a DCS request such as
+# DECRQSS (ESC P ... ST). When a case's own bytes already end in one of these it
+# elicits a reply we can pace on, so the harness must NOT append its own ESC[6n
+# probe after it: doubling the query both duplicates the reply and manufactures an
+# artificial back-to-back query the case's real bytes never contained, which can
+# leave a stray final byte (e.g. `n`) on the firmware glyph plane and destroy the
+# oracle (issue #31).
+_REPORT_QUERY = re.compile(
+    rb"(?:\x1b\[[0-9;?>=]*[nc]"      # DSR (CSI Ps n) / DA (CSI Ps c)
+    rb"|\x1b\[[0-9;?>=]*\$[pP]"      # DECRQM (CSI Ps $ p)
+    rb"|\x1bP.*?\x1b\\)\Z",          # DCS ... ST (DECRQSS and friends)
+    re.DOTALL,
+)
 
 
 def write_syms(build: pathlib.Path = BUILD) -> dict:
@@ -169,7 +187,14 @@ class MameTarget(Target):
         followed by an ESC[6n we block on -- lossless, the input ring can't
         overflow. Unlike ``Terminal.send_windowed`` this never raises: a case may
         legitimately end mid-sequence/mid-string and swallow the ack, so on the
-        first unanswered window we stop pacing and flush the remainder raw."""
+        first unanswered window we stop pacing and flush the remainder raw.
+
+        The one exception is a final window whose bytes already end in a
+        report-eliciting query (DSR/DA/DECRQM/DECRQSS): appending our own ESC[6n
+        there would double the reply and put an artificial back-to-back query on
+        the wire that can leave a stray glyph on the screen (issue #31). For that
+        window we send the case's bytes raw and pace on the case's own reply, so
+        the wire read-back is exactly what the firmware answered."""
         windows: list[bytes] = []
         cur = bytearray()
         for ch in chunk_bytes(data):     # atomic chunks: never split across ESC[6n
@@ -180,7 +205,17 @@ class MameTarget(Target):
         if cur:
             windows.append(bytes(cur))
 
+        last = len(windows) - 1
         for i, win in enumerate(windows):
+            if i == last and _REPORT_QUERY.search(win):
+                # The case ends in its own query -- do not perturb it with a probe.
+                # Send raw and wait for its reply (which, for an unimplemented
+                # request, may never come; that's a legitimate XFAIL, so never block
+                # hard beyond ack_to).
+                self.term.clear_buf()
+                self.term.send(win)
+                self._await_reply(self.ack_to)
+                return
             self.term.clear_buf()
             self.term.send(win + b"\x1b[6n")
             if not self.term.wait_cpr(self.ack_to):
@@ -189,6 +224,20 @@ class MameTarget(Target):
                 for rest in windows[i + 1:]:
                     self.term.send(rest)
                 return
+
+    def _await_reply(self, timeout: float) -> None:
+        """Wait for the firmware's reply to a case's own trailing query to arrive
+        and the wire to go quiet. Returns early once bytes have landed and stopped
+        growing; returns on timeout for a query the firmware does not answer (an
+        unimplemented request -- a legitimate no-reply outcome we must not hang on)."""
+        deadline = time.time() + timeout
+        prev = -1
+        while time.time() < deadline:
+            got = len(self.term.peek())
+            if got and got == prev:
+                return
+            prev = got
+            time.sleep(0.02)
 
     def render(self, data: bytes) -> Screen:
         self.term.clear_buf()
