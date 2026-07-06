@@ -242,7 +242,7 @@ python client/conformance/selftest.py
 
 It exercises the classifier against a built-in `fake` target and loads the real
 corpus, so a malformed case file or a broken classification rule fails fast
-without booting MAME. It also guards the two issue #31 report-channel fixes:
+without booting MAME. It also guards the two report-channel fixes:
 `test_report_check_is_exact` proves `model.check()` matches report bytes by exact
 equality (a doubled or malformed reply fails, with only a single trailing
 readiness-CPR allowance), and `test_readiness_probe_not_appended_on_trailing_query`
@@ -302,7 +302,7 @@ python client/conformance/oracle.py --differential --json build/oracle-different
 pyte is never treated as infallible: known pyte gaps are declared in
 `client/conformance/oracle_quirks.py` and skipped, and the channels pyte cannot see (wire
 reports, firmware state) stay firmware-probe-only. The differential no longer blanket-skips
-report cases (issue #31): a report case that also asserts a pyte-observable plane — e.g. the
+report cases: a report case that also asserts a pyte-observable plane — e.g. the
 cursor of a CPR case — now grades on that glyph/cursor diff, with only its un-oracleable
 wire `report` key dropped; pure wire-only report cases still SKIP. See
 [docs/CONFORMANCE.md](CONFORMANCE.md#pyte-is-not-infallible).
@@ -391,7 +391,7 @@ for you.
   | `has` / `absent` | `["text", ...]` | substring must / must not appear anywhere |
   | `attr` | `[[row, col, len, kind]]` | inverse-plane span; `kind` is `inverse` or `normal` |
   | `state` | `{ "var": value }` | firmware RAM variable equals `value` |
-  | `report` | `"\\e[...R"` | exact bytes the terminal must send back over the wire (matched by equality, not containment — issue #31) |
+  | `report` | `"\\e[...R"` | exact bytes the terminal must send back over the wire (matched by equality, not containment) |
 
 Validate the case offline with `python client/conformance/selftest.py` (it loads
 and checks every corpus file), then grade it with
