@@ -19,7 +19,8 @@ stateDiagram-v2
 ```
 
 - **NORMAL** renders printable bytes (`0x20`–`0x7E`) and acts on the C0 controls
-  CR, LF, BS, HT (tab to the next 8-column stop), and BEL (speaker click).
+  CR, LF, VT and FF (all three index down one line), BS, HT (tab to the next
+  8-column stop), and BEL (speaker click).
 - **ESC** handles the two-byte escapes `ESC D` (IND), `ESC M` (RI), `ESC E`
   (NEL); any other second byte is ignored.
 - **CSI** (after `ESC [`) accumulates numeric parameters separated by `;`, notes
@@ -36,6 +37,8 @@ to distinguish, e.g., DECSTBM (`ESC[r`) from private resets (`ESC[?..r`).
 | `0x08` | BS | Cursor left one column (no erase) |
 | `0x09` | HT | Cursor to the next multiple-of-8 column |
 | `0x0A` | LF | Cursor down; scroll at the bottom margin |
+| `0x0B` | VT | Same as LF (cursor down; scroll at the bottom margin) |
+| `0x0C` | FF | Same as LF (cursor down; scroll at the bottom margin) |
 | `0x0D` | CR | Cursor to column 1 |
 
 ## Escape sequences
