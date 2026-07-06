@@ -340,8 +340,8 @@ void vt100_feed(char ch)
             state = S_ESC;
         } else if (c == 0x0D) {
             scr_cr();
-        } else if (c == 0x0A) {
-            scr_lf();
+        } else if (c == 0x0A || c == 0x0B || c == 0x0C) {
+            scr_lf(); /* LF, VT, and FF all index down one line */
         } else if (c == 0x08) {
             scr_bs();
         } else if (c == 0x09) {

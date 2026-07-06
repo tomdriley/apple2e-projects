@@ -175,7 +175,8 @@
     "category": "c0-controls",
     "spec_ref": "ECMA-48 §8.3 VT; VT100-UG",
     "input": "\\e[2J\\e[5;10HVT\\v",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "spec",
     "expect": {
       "rows": [
         [
@@ -189,14 +190,15 @@
         12
       ]
     },
-    "notes": "Spec-correct VT acts as LF (cursor down one row, column preserved); the firmware ignores VT and leaves the cursor in place, so this is an expected XFAIL until VT is implemented."
+    "notes": "VT acts as LF: the cursor moves down one row with the column preserved (LNM off, so no CR)."
   },
   {
     "id": "c0-ff-ignored",
     "category": "c0-controls",
     "spec_ref": "ECMA-48 §8.3 FF; VT100-UG",
     "input": "\\e[2J\\e[5;10HFF\\f",
-    "status": "unsupported",
+    "status": "supported",
+    "basis": "spec",
     "expect": {
       "rows": [
         [
@@ -210,7 +212,7 @@
         12
       ]
     },
-    "notes": "Spec-correct FF acts as LF (cursor down one row, column preserved); the firmware ignores FF and leaves the cursor in place, so this is an expected XFAIL until FF is implemented."
+    "notes": "FF acts as LF: the cursor moves down one row with the column preserved (LNM off, so no CR)."
   },
   {
     "id": "c0-so-ignored",
