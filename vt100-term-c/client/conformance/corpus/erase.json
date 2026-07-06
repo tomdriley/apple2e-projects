@@ -103,6 +103,10 @@
     "input": "\\e[2;1HERASE-TOP\\e[3;1HERASE-MID\\e[4;1HERASE-BOT\\e[3;5H\\e[2J",
     "status": "supported",
     "expect": {
+      "cursor": [
+        3,
+        5
+      ],
       "cells": [
         [
           2,
@@ -126,7 +130,7 @@
         "ERASE-BOT"
       ]
     },
-    "notes": "ED 2 clears the display; no rows retain prefilled text."
+    "notes": "ED 2 clears the display; no rows retain prefilled text. Per ECMA-48 §8.3.39 the active position is unchanged, so the cursor stays where CUP left it (row 3 col 5), not homed."
   },
   {
     "id": "erase-el-default-to-end",
@@ -277,6 +281,10 @@
     "status": "supported",
     "basis": "degenerate",
     "expect": {
+      "cursor": [
+        19,
+        4
+      ],
       "cells": [
         [
           19,
@@ -290,7 +298,7 @@
         ]
       ]
     },
-    "notes": "With no DECSCA-protected cells, DECSED 2 clears the whole display identically to ED 2, matching the spec-correct selective erase for this input."
+    "notes": "With no DECSCA-protected cells, DECSED 2 clears the whole display identically to ED 2, matching the spec-correct selective erase for this input. Per ECMA-48 §8.3.39 the active position is unchanged, so the cursor stays where CUP left it (row 19 col 4), not homed."
   },
   {
     "id": "erase-decsel-default-to-end",

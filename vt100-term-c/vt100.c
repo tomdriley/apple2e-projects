@@ -182,7 +182,12 @@ static void csi_dispatch(unsigned char f)
         if (n == 1) {
             scr_clear_bop();
         } else if (n == 2) {
+            /* ED/DECSED param 2 erases the whole display but, per ECMA-48
+               8.3.39, must not move the active position. scr_clear_all()
+               homes the cursor (correct for RIS/init/alt-screen), so restore
+               the pre-erase position here to erase in place. */
             scr_clear_all();
+            scr_gotoxy(col, row);
         } else {
             scr_clear_eop();
         }
