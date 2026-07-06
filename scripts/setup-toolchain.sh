@@ -58,7 +58,7 @@ $SUDO apt-get install -y --no-install-recommends \
     ca-certificates curl git \
     build-essential \
     mame \
-    default-jre-headless \
+    openjdk-21-jre-headless \
     python3 python3-pip
 $SUDO rm -rf /var/lib/apt/lists/*
 
@@ -106,9 +106,14 @@ if [ ! -f "${AC_JAR}" ] || ! printf '%s  %s\n' "${AC_SHA256}" "${AC_JAR}" | sha2
     printf '%s  %s\n' "${AC_SHA256}" /tmp/ac.jar | sha256sum -c -
     $SUDO mv /tmp/ac.jar "${AC_JAR}"
 fi
+# AppleCommander 13.0 is compiled for Java 21 (class-file version 65). Resolve
+# the apt-installed JRE by absolute path so the wrapper never picks up an older
+# `java` that happens to be first on PATH (e.g. a CI runner's preinstalled JDK).
+AC_JAVA="$(dpkg -L openjdk-21-jre-headless 2>/dev/null | grep -m1 '/bin/java$' || true)"
+AC_JAVA="${AC_JAVA:-java}"
 $SUDO tee /usr/local/bin/ac >/dev/null <<EOF
 #!/usr/bin/env bash
-exec java -jar "${AC_JAR}" "\$@"
+exec "${AC_JAVA}" -jar "${AC_JAR}" "\$@"
 EOF
 $SUDO chmod +x /usr/local/bin/ac
 
@@ -131,10 +136,10 @@ else
     echo "WARNING: none.lib not found at ${NONELIB}" >&2
 fi
 mame -version 2>&1 | head -1 || true
-java -version 2>&1 | head -1 || true
+"${AC_JAVA}" -version 2>&1 | head -1 || true
 python3 --version
 python3 -c "import importlib.metadata as m; print('pyte', m.version('pyte'))" || true
-echo "ac -> java -jar ${AC_JAR}"
+echo "ac -> ${AC_JAVA} -jar ${AC_JAR}"
 
 cat <<EOF
 

@@ -10,6 +10,77 @@ CI-friendly (non-zero exit on failure).
 | `client/shell_test.py` | Rendered screen from real shell output | A snapshot of the 80×24 screen |
 | `client/conformance/runner.py` | Spec conformance across the VT100/ECMA-48 feature space | A spec-derived corpus graded by video-RAM, state-variable, and wire probes |
 
+## Continuous integration & reproducible toolchain
+
+Every harness above runs in **GitHub Actions** on each push and pull request, and
+the *same* toolchain powers local containers, Codespaces, and the Copilot cloud
+agent — so **dev == CI == agent**. One pinned, idempotent installer is the single
+source of truth:
+
+- [`scripts/setup-toolchain.sh`](../../scripts/setup-toolchain.sh) installs the
+  **pinned** cc65 (built from source at commit `cc3c40c54`), MAME, a JRE +
+  AppleCommander (checksum-verified), and `pyte`. The CI workflow, the container
+  image, the dev container, and the cloud-agent setup all call it, so there is only
+  ever one toolchain definition to keep current. It prints every tool version and
+  the `VT100.BIN` SHA-256 so runs are auditable.
+
+### The two CI tiers
+
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs two jobs:
+
+| Tier | Job | ROMs? | What it does |
+|------|-----|-------|--------------|
+| 1 — hermetic | `tier1-hermetic` | no | builds `VT100.BIN` with the pinned cc65 and runs `selftest.py` + `oracle.py --audit`. Runs on **every** push/PR, including fork PRs. |
+| 2 — real MAME | `tier2-mame` | yes | boots the firmware in headless MAME against the **actual Apple IIe ROMs** and runs the full `runner.py --target mame` suite; uploads `build/conformance.json` + failing-screen artifacts. |
+
+Tier 2 fails the build on any REGRESSION or ERROR (not yet `--strict` — see the
+repository's follow-up issues).
+
+### ROMs are provided privately, never committed
+
+The Apple IIe firmware ROMs are copyrighted, so they are **never** in the
+repository or the container image. They are delivered at runtime as an encrypted
+secret and validated before use:
+
+- **CI / cloud agent:** a base64 `tar.gz` of your rompath in the
+  `MAME_ROMS_TGZ_B64` secret (a repo secret for CI, mirrored to the `copilot`
+  environment for the agent).
+  [`scripts/provision-roms.sh`](../../scripts/provision-roms.sh) decodes it and
+  runs `mame -verifyroms` before any test boots.
+- **Fork PRs** get no secret, so Tier 2 skips automatically — Tier 1 still gates
+  the change.
+- **Local / container dev:** bind-mount your existing rompath (below) or export
+  `MAME_ROMS_TGZ_B64` in your shell.
+
+Regenerate the secret from a known-good MAME install:
+
+```sh
+tar -C "$ROMPATH" -czf roms.tgz .
+base64 -w0 roms.tgz | gh secret set MAME_ROMS_TGZ_B64
+```
+
+### Container, Codespaces & dev container
+
+A pinned [`Dockerfile`](../../Dockerfile) (`ubuntu:24.04` by digest + the
+installer) produces a ROM-free toolchain image, published to GHCR by
+[`toolchain-image.yml`](../../.github/workflows/toolchain-image.yml) on the
+default branch. [`.devcontainer/`](../../.devcontainer) builds that same image for
+Codespaces and local Dev Containers; its post-create step provisions ROMs from a
+Codespaces `MAME_ROMS_TGZ_B64` secret, a host env var, or a bind mount to
+`/opt/mame-roms`. The Copilot cloud agent is provisioned by
+[`copilot-setup-steps.yml`](../../.github/workflows/copilot-setup-steps.yml),
+which runs the same installer.
+
+Reproduce CI locally with the image:
+
+```sh
+docker build -t apple2e-toolchain .
+docker run --rm -it -v "$PWD:/work" -w /work/vt100-term-c \
+  -v /path/to/roms:/opt/mame-roms -e MAME_ROMPATH=/opt/mame-roms \
+  apple2e-toolchain \
+  bash -lc 'make && python3 client/conformance/runner.py --target mame'
+```
+
 ## Cursor tests — `vt100_test.py`
 
 ```sh

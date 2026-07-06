@@ -161,7 +161,9 @@ changing `status` to `supported`:
 The runner is `client/conformance/runner.py`; it emits `build/conformance.json`
 with every metric above plus a per-`basis` count. It exits nonzero on any
 REGRESSION or ERROR; `--strict` additionally fails on UNEXPECTED PASS to force the
-review.
+review. In CI this is **Tier 2**, run against the real Apple IIe ROMs with the
+pinned cc65/MAME toolchain; see
+[docs/TESTING.md](TESTING.md#continuous-integration--reproducible-toolchain).
 
 ## Reference-oracle differential testing (issue #18)
 
