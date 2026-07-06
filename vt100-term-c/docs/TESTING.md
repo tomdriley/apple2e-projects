@@ -237,6 +237,25 @@ It exercises the classifier against a built-in `fake` target and loads the real
 corpus, so a malformed case file or a broken classification rule fails fast
 without booting MAME.
 
+### Transport + wire-protocol test — `client/serial_link_test.py`
+
+A second offline test guards the host side of the wire (issue #15). It needs
+**no emulator, no hardware, no network** and runs in CI right after the self-test:
+
+```sh
+python client/serial_link_test.py
+```
+
+It checks that `serial_link` imports without `pyserial`/`pywinpty`, that
+`open_link` dispatches `tcp`/`serial`/`posix`, and that the `posix` transport
+(`PtyLink`) round-trips `write()` / non-blocking `read(n)` over a real loopback
+PTY (run on Linux/macOS; skipped on Windows, which has no PTYs). It also
+cross-checks [docs/PROTOCOL.md](PROTOCOL.md) against the real firmware — the line
+settings, XON/XOFF thresholds, and query replies it documents must match the
+literals in `serial.c` / `vt100.c`, and the CPR regex / `ESC[?1;0c` literal the
+doc hands a host implementer must actually parse the firmware's replies — so the
+protocol doc can't drift into fiction.
+
 ### Reference oracle — `conformance/oracle.py`
 
 Issue #18 adds an independent reference oracle ([pyte](https://github.com/selectel/pyte),

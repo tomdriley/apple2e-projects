@@ -42,6 +42,10 @@ jobs:
         working-directory: vt100-term-c
         run: python3 client/conformance/selftest.py
 
+      - name: Transport + wire-protocol tests (posix PTY loopback, doc vs source)
+        working-directory: vt100-term-c
+        run: python3 client/serial_link_test.py
+
       - name: Reference oracle audit (pyte vs authored expect)
         working-directory: vt100-term-c
         run: python3 client/conformance/oracle.py --audit
