@@ -119,6 +119,7 @@ vt100-term-c/
 | [docs/TERMINAL.md](docs/TERMINAL.md) | Every supported escape sequence, the parser state machine, keyboard map |
 | [docs/80COLUMN.md](docs/80COLUMN.md) | The auxiliary-memory 80-column scheme and scrolling |
 | [docs/SERIAL.md](docs/SERIAL.md) | The 6551 driver, slot detection, ring buffer, flow control, overrun nuances |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | The byte-level wire contract (8N1, XON/XOFF, ready-handshake, DSR/DA replies) and how to implement a stock-Linux host |
 | [docs/BRIDGE.md](docs/BRIDGE.md) | The WSL bash bridge (pywinpty/ConPTY), transports, real hardware |
 | [docs/TESTING.md](docs/TESTING.md) | The MAME test harnesses and **how to add a test** |
 | [docs/CONFORMANCE.md](docs/CONFORMANCE.md) | The spec-derived conformance corpus: standards map, external-suite survey, probe methodology, xfail model |
