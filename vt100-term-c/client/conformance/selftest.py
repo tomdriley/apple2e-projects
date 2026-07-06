@@ -69,6 +69,53 @@ def test_check_each_key():
     assert check(scr, {"absent": ["HELLO"]})
 
 
+def test_report_check_is_exact():
+    # issue #31: model.check() report comparison is EXACT equality, not
+    # containment. Containment quietly accepted a doubled or malformed firmware
+    # reply as long as it *contained* the wanted bytes as a substring, so a
+    # harness-doubled query or a garbled reply passed unseen.
+    #
+    # Exact firmware reply passes.
+    assert check(_screen(reports=b"\x1b[1;1R"), {"report": "\\e[1;1R"}) == []
+    # A duplicated reply -- the firmware answering twice, or a harness-injected
+    # probe doubling the case's own query -- MUST fail now (containment passed it).
+    assert check(_screen(reports=b"\x1b[1;1R\x1b[1;1R"), {"report": "\\e[1;1R"})
+    assert check(_screen(reports=b"\x1b[?1;0c\x1b[?1;0c"), {"report": "\\e[?1;0c"})
+    # A reply that merely *contains* the wanted bytes plus trailing non-CPR
+    # garbage must fail (containment passed it).
+    assert check(_screen(reports=b"\x1b[?1;0c\x1b[0n"), {"report": "\\e[?1;0c"})
+    # Documented allowance: a NON-CPR expected reply may strip exactly one
+    # trailing readiness CPR (the reply to an unavoidable ESC[6n pacing probe).
+    assert check(_screen(reports=b"\x1b[?1;0c\x1b[8;20R"),
+                 {"report": "\\e[?1;0c"}) == []
+    # ...but at most ONE, so two trailing CPRs still fail...
+    assert check(_screen(reports=b"\x1b[0n\x1b[8;20R\x1b[8;20R"),
+                 {"report": "\\e[0n"})
+    # ...and a CPR-typed expected reply gets no leniency, so a doubled CPR fails.
+    assert check(_screen(reports=b"\x1b[8;20R\x1b[8;20R"), {"report": "\\e[8;20R"})
+
+
+def test_readiness_probe_not_appended_on_trailing_query():
+    # issue #31: the MameTarget must NOT append its ESC[6n readiness probe to a
+    # final render window that already ends in the case's own report-eliciting
+    # query, or the doubled query manufactures an artificial back-to-back DSR that
+    # can leave a stray report-final byte on the firmware glyph plane. `_send`
+    # uses target_mame._REPORT_QUERY to detect that trailing query; assert it
+    # flags every reports-corpus input and never false-positives on ordinary
+    # render cases. (target_mame imports only stdlib, so this stays MAME-free.)
+    import target_mame  # noqa: E402
+    reports = [c for c in load_corpus() if c.category == "reports"]
+    assert reports, "reports corpus category is missing"
+    for c in reports:
+        assert target_mame._REPORT_QUERY.search(c.input_bytes), (
+            f"{c.id}: trailing report query {c.input_bytes!r} not detected -- "
+            "the probe would still be appended and contaminate this case")
+    # Ordinary render inputs that do not end in a query still get the probe.
+    for data in (b"", b"A\r\nB", b"\x1b[2J", b"\x1b[8;20H", b"HELLO"):
+        assert not target_mame._REPORT_QUERY.search(data), (
+            f"{data!r} wrongly flagged as a trailing report query")
+
+
 def test_classify():
     assert classify("supported", [], 1) == PASS
     assert classify("supported", ["boom"], 1) == REGRESSION

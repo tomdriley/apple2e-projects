@@ -259,16 +259,20 @@ def run_differential_case(firmware, ref: PyteTarget, case) -> dict:
     if quirk:
         return {**base, "outcome": runner.SKIP, "fails": [],
                 "skipped_keys": [f"pyte-quirk: {quirk}"]}
-    # The wire `report` channel (DSR/DA/DECRQSS replies) is invisible to pyte
-    # (caps.reports=False), so pyte cannot oracle what these cases actually test.
-    # Worse, MameTarget appends its own ESC[6n cursor probe to every render;
-    # back-to-back with a case's own DSR that leaves a stray report-final byte on
-    # the firmware's glyph plane at some cursor positions -- an artifact the case's
-    # real (single-DSR) bytes never produce and that pyte, never seeing the probe,
-    # cannot match. A screen diff is not a valid oracle here, so skip it.
-    if "report" in case.expect:
-        return {**base, "outcome": runner.SKIP, "fails": [],
-                "skipped_keys": sorted(case.expect)}
+    # The wire `report` channel (DSR/DA replies) is invisible to pyte
+    # (caps.reports=False), so pyte can never oracle a case's *report* assertion;
+    # `checkable_expect` below drops it. Historically we skipped the whole case,
+    # because MameTarget also appended its own ESC[6n cursor probe to every render
+    # and, back-to-back with a case's own DSR, the doubled query could leave a
+    # stray report-final byte on the firmware glyph plane -- an artifact the case's
+    # real (single-query) bytes never produce and that pyte, never seeing the
+    # probe, cannot match. That harness contamination is fixed (issue #31: the
+    # probe is no longer appended after a case's own trailing query), so a report
+    # case that ALSO asserts a pyte-observable plane -- e.g. the cursor of a CPR
+    # case -- now yields a valid glyph/inverse/cursor diff and is graded on those
+    # planes (its report key is simply dropped as un-oracleable). Pure wire-only
+    # report cases have nothing pyte can see and fall through to the `not
+    # checkable` skip just below.
     # pyte can only oracle the glyph/inverse/cursor planes. A case whose entire
     # `expect` lives on channels pyte cannot see (firmware `state`) gives a screen
     # diff nothing to prove -- firmware and pyte would "agree" on a blank screen for

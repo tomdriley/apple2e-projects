@@ -59,7 +59,7 @@ checked by machine; no human eyeballing, and no reference emulator in the MAME r
 |---------|-----------|---------|
 | Video-RAM probe | MAME Lua reads the Apple's 80-column video page directly (`client/conformance/probes/screen_watch.lua`) | Glyph plane and inverse-attribute plane. Inverse is detectable because the firmware stores inverse glyphs as video bytes `< 0x80`. [docs/TESTING.md](TESTING.md) describes the current screen dumper. |
 | State-variable probe | MAME Lua reads firmware globals from RAM using addresses from the linker label file | Cursor row/col, current attribute, scroll region, DEC mode flags; useful for modes that parse but do not yet affect rendering. |
-| Wire read-back | The terminal's own replies over the serial socket | Cursor position report (`ESC[6n` → `ESC[row;colR`), device status (`ESC[5n` → `ESC[0n`), device attributes (`ESC[c` → `ESC[?1;0c`). |
+| Wire read-back | The terminal's own replies over the serial socket | Cursor position report (`ESC[6n` → `ESC[row;colR`), device status (`ESC[5n` → `ESC[0n`), device attributes (`ESC[c` → `ESC[?1;0c`). Report bytes are matched **exactly** (issue #31), not by containment, so a doubled or malformed reply fails; the only allowance is that a non-CPR expected reply may strip one trailing readiness CPR. To keep the read-back clean, `MameTarget` sends a render window that already ends in the case's own report query raw, without appending its `ESC[6n` pacing probe. |
 
 ```mermaid
 flowchart LR
@@ -222,10 +222,18 @@ SU/SD (`CSI S` / `CSI T`) unimplemented; SCOSC/SCORC (`CSI s` / `CSI u`) unimple
 strings render their payload instead of consuming it; DEC Special Graphics and alt-screen.
 Two channels are structurally invisible to pyte and handled through `Capabilities`
 (`reports=False, state=False`): the **wire `report` channel** (DSR/DA/DECRQSS replies) and
-**firmware state variables**. The differential additionally **skips** every `report` case,
-because pyte cannot model the wire *and* the MAME harness appends its own `ESC[6n` probe to
-each render — back-to-back with a case's own DSR it perturbs the firmware glyph plane in a
-way the case's real bytes never do, so a screen diff there is not a valid oracle.
+**firmware state variables**. pyte can never oracle a case's `report` assertion, so
+`checkable_expect` drops it — but the differential no longer blanket-skips report cases.
+Before issue #31 the MAME harness appended its own `ESC[6n` probe to *every* render;
+back-to-back with a case's own DSR that doubled query could leave a stray report-final byte
+on the firmware glyph plane, an artifact the case's real (single-query) bytes never produce
+and pyte never sees, so a screen diff was not a valid oracle. That contamination is now
+fixed (`MameTarget._send` sends a final window that already ends in the case's own query
+raw, without the probe), so a report case that **also** asserts a pyte-observable plane —
+e.g. the cursor of a CPR case (`ESC[8;20H ESC[6n`) — grades on that glyph/inverse/cursor
+diff like any other case, with only its wire `report` key dropped. Pure wire-only report
+cases (bare `ESC[5n`, `ESC[c`, DECRQM, DECRQSS) have nothing pyte can observe and still SKIP
+via the normal not-checkable path.
 
 ### What the first run found
 
