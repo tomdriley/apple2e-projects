@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""pyte reference oracle -- independent cross-check of the conformance corpus (#18).
+"""pyte reference oracle -- independent cross-check of the conformance corpus.
 
-#13 grades the firmware against **hand-authored** expectations. Those goldens encode
+The conformance runner grades the firmware against **hand-authored** expectations. Those goldens encode
 our *own* reading of the VT100/ECMA-48 spec, so a shared misreading by the people who
 wrote both the firmware and the expectations is invisible. This oracle adds an
 *independent* second opinion: pyte, a pure-Python ECMA-48 screen model that knows
@@ -9,7 +9,7 @@ nothing about our firmware or our authored ``expect`` blocks.
 
 For a given case there are up to three screens:
 
-    E  -- authored ``expect``      (the human truth from #13)
+    E  -- authored ``expect``      (the human truth from the corpus)
     F  -- firmware screen          (MameTarget; needs a build + MAME)
     P  -- pyte reference screen     (PyteTarget; pure Python)
 
@@ -24,7 +24,7 @@ and this driver runs two comparisons plus a self-test:
 
   * ``--differential`` -- F vs P. The firmware against the independent reference over
     the *whole* screen (stronger than ``check()``'s declared-key comparison). This is
-    literally "the #13 runner, graded against pyte instead of the authored expect": the
+    literally "the conformance runner, graded against pyte instead of the authored expect": the
     per-case results are shaped exactly like ``runner.run_case`` and fed straight through
     ``runner.summarize`` / ``runner.print_report``, so the differential yields the same
     basis-graded metrics (behavioral / spec / profile conformance) computed against an
@@ -273,7 +273,7 @@ def run_differential_case(firmware, ref: PyteTarget, case) -> dict:
     # `expect` lives on channels pyte cannot see (firmware `state`) gives a screen
     # diff nothing to prove -- firmware and pyte would "agree" on a blank screen for
     # reasons unrelated to the tested behaviour -- so scoring it as a PASS is vacuous.
-    # Skip it (the #13 F-vs-E runner still covers it via the state probe).
+    # Skip it (the F-vs-E runner still covers it via the state probe).
     checkable, _skipped = runner.checkable_expect(case.expect, ref)
     if not checkable:
         return {**base, "outcome": runner.SKIP, "fails": [],
@@ -367,7 +367,7 @@ def _write_json(path: str, summary: dict, results: list) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        description="pyte reference oracle (#18): audit (default) / differential / selftest")
+        description="pyte reference oracle: audit (default) / differential / selftest")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--audit", action="store_const", const="audit", dest="mode",
                       help="(default) pyte vs authored expect -- MAME-free corpus audit")

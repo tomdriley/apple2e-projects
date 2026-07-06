@@ -4,7 +4,7 @@
 pyte (https://github.com/selectel/pyte) is a pure-Python ECMA-48 screen model.
 It knows nothing about this firmware or the hand-authored ``expect`` blocks, so
 its rendering is an *independent* second opinion on "what should this byte stream
-display" -- the reference oracle for issue #18.
+display" -- the reference oracle.
 
 pyte is a screen *model*, not an interactive terminal: it has no transmit channel
 (so it cannot answer DSR/DA reports) and no firmware state variables. Those

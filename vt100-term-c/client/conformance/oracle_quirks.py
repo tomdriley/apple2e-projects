@@ -1,4 +1,4 @@
-"""Declared pyte quirks -- where the reference itself is wrong or incomplete (#18).
+"""Declared pyte quirks -- where the reference itself is wrong or incomplete.
 
 The oracle uses pyte as an *independent* source of truth, but pyte is not a perfect
 VT100. Where pyte is demonstrably wrong or incomplete, we say so here so that:

@@ -9,7 +9,7 @@ serial-only connection) is reported as *not checkable* rather than failed.
 Targets in this workstream:
   * ``MameTarget``   -- firmware in headless MAME (the comprehensive target).
   * ``SerialTarget`` -- a real Apple IIe; only the report/cursor subset.
-  * ``PyteTarget``   -- deferred to issue #18 (reference oracle).
+  * ``PyteTarget``   -- the pyte reference oracle.
 """
 from __future__ import annotations
 

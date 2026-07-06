@@ -21,7 +21,7 @@ static const unsigned rowbase[SCR_ROWS] = {
 };
 
 /* Cursor + screen state below is intentionally non-static: the conformance
- * state probe (client/conformance, issue #13) reads these from RAM using the
+ * state probe (client/conformance) reads these from RAM using the
  * addresses ld65 records in build/vt100.map. Exporting them changes no code and
  * keeps their fixed BSS addresses; it only adds them to the symbol table. */
 unsigned char cur_col;
