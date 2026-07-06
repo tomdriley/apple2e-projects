@@ -5,6 +5,12 @@ login console for Linux. It runs on the PC side and relays raw bytes between a
 pseudo-terminal running bash and the transport to the Apple (a TCP socket for
 MAME, or a serial port for real hardware).
 
+> The bytes on the wire are a plain 8N1 serial TTY — see
+> [PROTOCOL.md](PROTOCOL.md) for the host-agnostic contract (framing, XON/XOFF,
+> the ready-handshake, the DSR/DA replies) and stock-Linux recipes
+> (`agetty`/`socat`) that need no Windows tooling at all. This bridge is just one
+> host that speaks it.
+
 ```
    WSL bash  ──▶  pywinpty pty (ConPTY, 80x24)  ──▶  TcpLink / SerialLink  ──▶  Apple terminal
              ◀──                                 ◀──
@@ -19,8 +25,13 @@ non-blocking `read(n) -> bytes`.
   then relays over the accepted socket. Start it **before** launching MAME.
 - **`SerialLink`** opens a USB/RS-232 adapter (auto-detecting the port) for real
   hardware.
+- **`PtyLink`** (the `posix` transport) opens a POSIX pseudo-terminal with the
+  Python stdlib alone — no `pyserial`, no `pywinpty` — and prints a slave device
+  for a stock Unix host to attach to (e.g. `socat` bridging it to a real serial
+  line, or `agetty` running a login). It exists to prove the wire is a standard
+  serial TTY; see [PROTOCOL.md §6](PROTOCOL.md#6-implementing-a-host-on-stock-linux).
 
-`open_link("tcp"|"serial", ...)` returns the right one.
+`open_link("tcp"|"serial"|"posix", ...)` returns the right one.
 
 ## Interactive bridge — `client/vt100_shell.py`
 
