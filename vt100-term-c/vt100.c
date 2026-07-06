@@ -264,6 +264,11 @@ static void csi_dispatch(unsigned char f)
                 } else {
                     scr_restore_screen();
                 }
+                /* Reset SGR inverse on both enter and exit: a pager may leave
+                 * inverse video selected when it quits, which would otherwise
+                 * bleed into the restored shell. */
+                attr_inverse = 0;
+                scr_set_attr(0);
                 break;
             default:
                 break;

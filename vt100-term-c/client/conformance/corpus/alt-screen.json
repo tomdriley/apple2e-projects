@@ -64,7 +64,7 @@
     "category": "alt-screen",
     "spec_ref": "VT100-UG SGR; DEC private mode 47 alternate screen",
     "input": "\\e[7m\\e[?47h\\e[?47l\\e[1;1HOK47",
-    "status": "unsupported",
+    "status": "supported",
     "expect": {
       "rows": [
         [
@@ -89,7 +89,7 @@
     "category": "alt-screen",
     "spec_ref": "VT100-UG SGR; ctlseqs: mode 1047 alternate screen",
     "input": "\\e[7m\\e[?1047h\\e[?1047l\\e[1;1HOK1047",
-    "status": "unsupported",
+    "status": "supported",
     "expect": {
       "rows": [
         [
@@ -114,7 +114,7 @@
     "category": "alt-screen",
     "spec_ref": "VT100-UG SGR; ctlseqs: mode 1049 alternate screen",
     "input": "\\e[7m\\e[?1049h\\e[?1049l\\e[1;1HOK1049",
-    "status": "unsupported",
+    "status": "supported",
     "expect": {
       "rows": [
         [
