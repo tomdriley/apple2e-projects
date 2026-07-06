@@ -49,8 +49,8 @@ jobs:
           if [ -z "${MAME_ROMS_TGZ_B64:-}" ]; then
             echo "::error::MAME_ROMS_TGZ_B64 secret is not set for this environment." \
                  "The Copilot agent needs the private Apple IIe ROMs to boot the" \
-                 "firmware and verify changes. Add the secret to the 'copilot'" \
-                 "environment (see vt100-term-c/docs/TESTING.md)." >&2
+                 "firmware and verify changes. Add the Actions secret with" \
+                 "scripts/publish-rom-secret.sh (see vt100-term-c/docs/TESTING.md)." >&2
             exit 1
           fi
           romp="$(bash scripts/provision-roms.sh /opt/mame-roms)"

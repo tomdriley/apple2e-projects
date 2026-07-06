@@ -47,8 +47,13 @@ repository or the container image. They are delivered at runtime as an encrypted
 secret and validated before use:
 
 - **CI / cloud agent:** a base64 `tar.gz` of your rompath in the
-  `MAME_ROMS_TGZ_B64` secret (a repo secret for CI, mirrored to the `copilot`
-  environment for the agent).
+  `MAME_ROMS_TGZ_B64` secret. The same value lives in three separate scopes,
+  because each runner reads its own store:
+  - `actions` — `ci.yml` and `copilot-setup-steps.yml` (the Copilot **cloud**
+    agent),
+  - `agents` — the Copilot **coding** agent (Settings → Secrets → Agents),
+  - `codespaces` — Codespaces / dev containers.
+
   [`scripts/provision-roms.sh`](../../scripts/provision-roms.sh) decodes it and
   runs `mame -verifyroms` before any test boots.
 - **Fork PRs** get no secret, so `mame-conformance` skips automatically — the
@@ -56,11 +61,22 @@ secret and validated before use:
 - **Local / container dev:** bind-mount your existing rompath (below) or export
   `MAME_ROMS_TGZ_B64` in your shell.
 
-Regenerate the secret from a known-good MAME install:
+Regenerate and publish the secret from a known-good MAME install with the
+producer script (the counterpart to `provision-roms.sh`), which packs the
+rompath and uploads it to every scope above:
+
+```sh
+scripts/publish-rom-secret.sh "$ROMPATH"      # defaults to $MAME_ROMPATH or ~/.mame/roms
+# target a subset of scopes / a different repo:
+SCOPES="agents" REPO=owner/name scripts/publish-rom-secret.sh "$ROMPATH"
+```
+
+Or do it by hand for a single scope (`--app` accepts `actions`, `agents`,
+`codespaces`, `dependabot`):
 
 ```sh
 tar -C "$ROMPATH" -czf roms.tgz .
-base64 -w0 roms.tgz | gh secret set MAME_ROMS_TGZ_B64
+base64 -w0 roms.tgz | gh secret set MAME_ROMS_TGZ_B64 --app agents
 ```
 
 ### Container, Codespaces & dev container

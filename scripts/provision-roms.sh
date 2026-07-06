@@ -6,10 +6,10 @@
 # The Apple IIe firmware is copyrighted and NEVER lives in this repo. It is
 # delivered out-of-band as an encrypted secret:
 #     MAME_ROMS_TGZ_B64 = base64( tar.gz of the rompath contents )
-# provisioned as:
-#     * a repo/Actions secret        -> cloud CI (ci.yml, mame-conformance)
-#     * a `copilot` environment secret -> Copilot cloud agent
-#     * a Codespaces secret          -> Codespaces
+# provisioned (via scripts/publish-rom-secret.sh) as:
+#     * an Actions secret    -> cloud CI (ci.yml) + copilot-setup-steps.yml
+#     * an Agents secret      -> Copilot coding agent (Settings > Secrets > Agents)
+#     * a Codespaces secret   -> Codespaces / dev containers
 # For local/container development, bind-mount an existing rompath instead of
 # setting this variable.
 #
