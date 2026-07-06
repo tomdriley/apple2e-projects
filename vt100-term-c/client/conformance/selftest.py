@@ -70,7 +70,7 @@ def test_check_each_key():
 
 
 def test_report_check_is_exact():
-    # issue #31: model.check() report comparison is EXACT equality, not
+    # model.check() report comparison is EXACT equality, not
     # containment. Containment quietly accepted a doubled or malformed firmware
     # reply as long as it *contained* the wanted bytes as a substring, so a
     # harness-doubled query or a garbled reply passed unseen.

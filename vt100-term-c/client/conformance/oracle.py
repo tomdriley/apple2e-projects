@@ -266,7 +266,7 @@ def run_differential_case(firmware, ref: PyteTarget, case) -> dict:
     # and, back-to-back with a case's own DSR, the doubled query could leave a
     # stray report-final byte on the firmware glyph plane -- an artifact the case's
     # real (single-query) bytes never produce and that pyte, never seeing the
-    # probe, cannot match. That harness contamination is fixed (issue #31: the
+    # probe, cannot match. That harness contamination is fixed (the
     # probe is no longer appended after a case's own trailing query), so a report
     # case that ALSO asserts a pyte-observable plane -- e.g. the cursor of a CPR
     # case -- now yields a valid glyph/inverse/cursor diff and is graded on those
