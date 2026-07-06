@@ -354,5 +354,40 @@
       ]
     },
     "notes": "With no DECSCA-protected cells, DECSEL 2 clears the whole line identically to EL 2, matching the spec-correct selective erase for this input."
+  },
+  {
+    "id": "erase-ed-two-keeps-cursor",
+    "category": "erase",
+    "spec_ref": "ECMA-48 §8.3.39 ED",
+    "input": "\\e[10;30HDELME\\e[10;60H\\e[2J",
+    "status": "supported",
+    "expect": {
+      "cursor": [
+        10,
+        60
+      ],
+      "absent": [
+        "DELME"
+      ]
+    },
+    "notes": "Positive guard for the ED-erase-in-place invariant (issue #29): ED 2 erases the whole display but, per ECMA-48 §8.3.39, must not move the active position. With the cursor parked at row 10 col 60, ESC[2J leaves it there rather than homing to (1,1). Fails against the old cursor-homing firmware and passes with the in-place erase; the absent DELME proves the erase actually ran."
+  },
+  {
+    "id": "erase-decsed-two-keeps-cursor",
+    "category": "erase",
+    "spec_ref": "VT220-RM DECSED (DEC-private selective erase)",
+    "input": "\\e[6;15HGONE\\e[6;45H\\e[?2J",
+    "status": "supported",
+    "basis": "degenerate",
+    "expect": {
+      "cursor": [
+        6,
+        45
+      ],
+      "absent": [
+        "GONE"
+      ]
+    },
+    "notes": "Positive guard for the DECSED-erase-in-place invariant (issue #29): with no DECSCA-protected cells DECSED 2 clears the display identically to ED 2, and per ECMA-48 §8.3.39 the active position is unchanged. With the cursor parked at row 6 col 45, ESC[?2J leaves it there rather than homing to (1,1). Fails against the old cursor-homing firmware and passes with the in-place erase; the absent GONE proves the erase actually ran."
   }
 ]
