@@ -36,9 +36,9 @@ jobs:
       - name: Install pinned toolchain (cc65 + MAME + AppleCommander + pyte)
         run: bash scripts/setup-toolchain.sh
 
-      # Tier 2 (real MAME) needs the private Apple IIe ROMs. Decode them from the
-      # secret into a fixed path. Best-effort: if the secret is unavailable the
-      # agent still has the full toolchain and can run Tier 1 (hermetic) work.
+      # The MAME conformance suite needs the private Apple IIe ROMs. Decode them
+      # from the secret into a fixed path. Best-effort: if the secret is unavailable
+      # the agent still has the full toolchain and can run the ROM-free checks.
       - name: Provision Apple IIe ROMs (best-effort)
         continue-on-error: true
         env:

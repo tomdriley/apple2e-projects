@@ -7,7 +7,7 @@
 # delivered out-of-band as an encrypted secret:
 #     MAME_ROMS_TGZ_B64 = base64( tar.gz of the rompath contents )
 # provisioned as:
-#     * a repo/Actions secret        -> cloud CI (ci.yml, Tier 2)
+#     * a repo/Actions secret        -> cloud CI (ci.yml, mame-conformance)
 #     * a `copilot` environment secret -> Copilot cloud agent
 #     * a Codespaces secret          -> Codespaces
 # For local/container development, bind-mount an existing rompath instead of

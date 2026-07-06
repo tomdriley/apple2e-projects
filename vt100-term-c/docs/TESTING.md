@@ -24,17 +24,21 @@ source of truth:
   ever one toolchain definition to keep current. It prints every tool version and
   the `VT100.BIN` SHA-256 so runs are auditable.
 
-### The two CI tiers
+### The CI jobs
 
-[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs two jobs:
+Booting the firmware in **real MAME against the actual Apple IIe ROMs is the core
+of the gate** — it is the only job that exercises the real firmware. A fast,
+ROM-free job runs first so portable regressions (and fork PRs, which have no ROM
+secret) are still caught. [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
+runs both:
 
-| Tier | Job | ROMs? | What it does |
-|------|-----|-------|--------------|
-| 1 — hermetic | `tier1-hermetic` | no | builds `VT100.BIN` with the pinned cc65 and runs `selftest.py` + `oracle.py --audit`. Runs on **every** push/PR, including fork PRs. |
-| 2 — real MAME | `tier2-mame` | yes | boots the firmware in headless MAME against the **actual Apple IIe ROMs** and runs the full `runner.py --target mame` suite; uploads `build/conformance.json` + failing-screen artifacts. |
+| Job | ROMs? | What it does |
+|-----|-------|--------------|
+| `hermetic-checks` | no | builds `VT100.BIN` with the pinned cc65 and runs `selftest.py` + `oracle.py --audit`. A fast, portable pre-check that runs on **every** push/PR, including fork PRs. |
+| `mame-conformance` | yes | boots the firmware in headless MAME against the **actual Apple IIe ROMs** and runs the full `runner.py --target mame` suite; uploads `build/conformance.json` + failing-screen artifacts. This is the firmware regression gate. |
 
-Tier 2 fails the build on any REGRESSION or ERROR (not yet `--strict` — see the
-repository's follow-up issues).
+`mame-conformance` fails the build on any REGRESSION or ERROR (not yet `--strict` —
+see the repository's follow-up issues).
 
 ### ROMs are provided privately, never committed
 
@@ -47,8 +51,8 @@ secret and validated before use:
   environment for the agent).
   [`scripts/provision-roms.sh`](../../scripts/provision-roms.sh) decodes it and
   runs `mame -verifyroms` before any test boots.
-- **Fork PRs** get no secret, so Tier 2 skips automatically — Tier 1 still gates
-  the change.
+- **Fork PRs** get no secret, so `mame-conformance` skips automatically — the
+  hermetic checks still gate the change.
 - **Local / container dev:** bind-mount your existing rompath (below) or export
   `MAME_ROMS_TGZ_B64` in your shell.
 

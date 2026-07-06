@@ -1,13 +1,14 @@
 name: CI
 
 # Regression gate for the Apple IIe VT100 terminal firmware (issue #22).
-#   Tier 1 (hermetic): builds the firmware with the pinned cc65 toolchain and
-#                      runs the ROM-free conformance selftest + pyte oracle audit.
-#                      Runs on every push/PR, including fork PRs.
-#   Tier 2 (real MAME): boots the firmware in headless MAME against the actual
-#                       Apple IIe firmware ROMs and runs the full conformance
-#                       suite. Requires the private ROM secret, so it is skipped
-#                       automatically when the secret is unavailable (fork PRs).
+#   hermetic-checks: builds the firmware with the pinned cc65 toolchain and runs
+#                    the ROM-free conformance selftest + pyte oracle audit. A fast,
+#                    portable pre-check that runs on every push/PR, including forks.
+#   mame-conformance: boots the firmware in headless MAME against the actual Apple
+#                     IIe firmware ROMs and runs the full conformance suite. This is
+#                     the core of the gate -- the only job that exercises the real
+#                     firmware. Requires the private ROM secret, so it is skipped
+#                     automatically when the secret is unavailable (fork PRs).
 on:
   push:
   pull_request:
@@ -26,8 +27,8 @@ env:
   MAME: /usr/local/bin/mame
 
 jobs:
-  tier1-hermetic:
-    name: Tier 1 - hermetic build + oracle (no ROMs)
+  hermetic-checks:
+    name: Hermetic build + oracle (no ROMs)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -54,14 +55,14 @@ jobs:
           echo "VT100.BIN sha256:"
           sha256sum build/VT100.BIN
 
-      - name: Detect ROM secret for Tier 2
+      - name: Detect ROM secret for MAME conformance
         id: secret
         run: echo "has_roms=${{ secrets.MAME_ROMS_TGZ_B64 != '' }}" >> "$GITHUB_OUTPUT"
 
-  tier2-mame:
-    name: Tier 2 - real MAME conformance
-    needs: tier1-hermetic
-    if: ${{ needs.tier1-hermetic.outputs.has_roms == 'true' }}
+  mame-conformance:
+    name: MAME conformance (real Apple IIe ROMs)
+    needs: hermetic-checks
+    if: ${{ needs.hermetic-checks.outputs.has_roms == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
