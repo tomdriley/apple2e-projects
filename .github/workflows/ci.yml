@@ -2,8 +2,9 @@ name: CI
 
 # Regression gate for the Apple IIe VT100 terminal firmware (issue #22).
 #   hermetic-checks: builds the firmware with the pinned cc65 toolchain and runs
-#                    the ROM-free conformance selftest + pyte oracle audit. A fast
-#                    pre-check that runs first so portable regressions fail early.
+#                    the ROM-free conformance selftest + pyte oracle audit + the
+#                    ring-buffer unit test (cc65 sim65). A fast pre-check that
+#                    runs first so portable regressions fail early.
 #   mame-conformance: boots the firmware in headless MAME against the actual Apple
 #                     IIe firmware ROMs and runs the full conformance suite. This is
 #                     the core of the gate -- the only job that exercises the real
@@ -61,6 +62,10 @@ jobs:
       - name: Reference oracle audit (pyte vs authored expect)
         working-directory: vt100-term-c
         run: python3 client/conformance/oracle.py --audit
+
+      - name: Ring-buffer unit test (cc65 sim65, ROM-free)
+        working-directory: vt100-term-c
+        run: make test
 
       - name: Build firmware (VT100.BIN)
         working-directory: vt100-term-c

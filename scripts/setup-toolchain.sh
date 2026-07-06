@@ -89,7 +89,7 @@ else
     $SUDO make -C "${tmp}/cc65" install PREFIX="${CC65_PREFIX}"
     rm -rf "${tmp}"
 fi
-for t in cc65 ca65 ld65 cl65 ar65 co65 od65 da65; do
+for t in cc65 ca65 ld65 cl65 ar65 co65 od65 da65 sim65; do
     if [ -x "${CC65_PREFIX}/bin/${t}" ]; then
         $SUDO ln -sf "${CC65_PREFIX}/bin/${t}" "/usr/local/bin/${t}"
     fi
