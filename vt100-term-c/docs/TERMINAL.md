@@ -74,7 +74,7 @@ to distinguish, e.g., DECSTBM (`ESC[r`) from private resets (`ESC[?..r`).
 
 | Sequence | Name | Action |
 |----------|------|--------|
-| `ESC [ Ps J` | ED | Erase display: 0 = to end, 1 = to cursor, 2 = all + home |
+| `ESC [ Ps J` | ED | Erase display: 0 = to end, 1 = to cursor, 2 = all (erased in place; the cursor does not move, per ECMA-48 §8.3.39) |
 | `ESC [ Ps K` | EL | Erase line: 0 = to end, 1 = to cursor, 2 = whole line |
 | `ESC [ Ps ; Ps r` | DECSTBM | Set scroll region `top;bottom`, home the cursor |
 | `ESC [ Ps L` | IL | Insert `Ps` blank lines at the cursor |
