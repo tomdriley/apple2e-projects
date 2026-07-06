@@ -2,7 +2,7 @@
 """Offline tests for the transports in ``serial_link.py`` and the wire-protocol
 doc (no MAME, no hardware, no network).
 
-Covers issue #15's alternative-host binding:
+Covers the alternative-host binding:
 
   * ``serial_link`` imports cleanly and ``open_link`` dispatches
     ``tcp``/``serial``/``posix`` to the right classes (import must not need

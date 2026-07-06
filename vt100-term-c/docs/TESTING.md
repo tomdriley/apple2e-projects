@@ -239,7 +239,7 @@ without booting MAME.
 
 ### Transport + wire-protocol test — `client/serial_link_test.py`
 
-A second offline test guards the host side of the wire (issue #15). It needs
+A second offline test guards the host side of the wire. It needs
 **no emulator, no hardware, no network** and runs in CI right after the self-test:
 
 ```sh
