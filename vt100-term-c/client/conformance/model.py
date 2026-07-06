@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Data model for the spec-driven conformance corpus (issue #13).
+"""Data model for the spec-driven conformance corpus.
 
 The corpus is *data*: each case is a declarative record authored from the spec
 (ECMA-48 / VT100 / xterm ctlseqs), stored as JSON under ``corpus/`` and decoupled

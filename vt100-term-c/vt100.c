@@ -22,7 +22,7 @@ static unsigned char state;
 static unsigned int  param[MAXPARAM];
 static unsigned char nparam;       /* index of the parameter currently being built */
 static unsigned char priv;         /* a private marker ('?') was seen in this CSI */
-/* Non-static so the conformance state probe can read them from RAM (see #13);
+/* Non-static so the conformance state probe can read them from RAM;
  * exporting them changes no code, only the symbol table. */
 unsigned char app_cursor;          /* DECCKM: application cursor keys enabled */
 unsigned char attr_inverse;        /* SGR 7: inverse video currently selected */

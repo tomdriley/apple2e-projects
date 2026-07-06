@@ -2,7 +2,7 @@
 """MameTarget -- render corpus inputs on the real firmware in headless MAME.
 
 This is the comprehensive, fully-automated render target for the conformance
-runner (issue #13). It boots ``build/vt100.dsk`` in MAME with the Super Serial
+runner. It boots ``build/vt100.dsk`` in MAME with the Super Serial
 Card bridged to a socket -- exactly like ``bench.py`` and ``shell_test.py`` --
 and drives each case through three machine oracles, with no human in the loop:
 

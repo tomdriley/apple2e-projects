@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Conformance runner: corpus x target -> classify -> metrics + JSON report.
 
-Implements the esctest ``knownBug`` progress model (issue #13). Each case
+Implements the esctest ``knownBug`` progress model. Each case
 declares a ``status`` (supported / partial / unsupported) and spec-authored
 ``expect``. After a target renders the case, the declared expectations that the
 target can actually observe are checked and the result is classified:
