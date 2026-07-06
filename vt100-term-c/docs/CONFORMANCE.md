@@ -229,8 +229,11 @@ way the case's real bytes never do, so a screen diff there is not a valid oracle
 
 ### What the first run found
 
-- **Reference agreement 98.5%** (131/133 strict-spec cases); the two `spec-suspect`s were
-  the firmware/spec question below and one mis-authored terminator.
+- **Reference agreement at the first oracle run: 98.5%** (131/133 strict-spec cases);
+  the two `spec-suspect`s were the firmware/spec question below (the ED/DECSED cursor
+  homing, now **fixed** — see the next bullet) and one mis-authored terminator. After the
+  issue #29 fix plus the two new guard cases, the current audit agreement is **133/134**,
+  with only the terminator case (`osc-title-st-following-text`) still outstanding.
 - **Differential: 3 REGRESSIONs, all one root cause** — the firmware homed the cursor to
   (1,1) on erase-all (`ED` / `DECSED` with parameter `2`), while ECMA-48 §8.3.39 (ED) does
   not move the cursor and pyte leaves it put. This was a genuine firmware/spec
@@ -243,7 +246,7 @@ way the case's real bytes never do, so a screen diff there is not a valid oracle
   `erase-ed-two-all`, `erase-decsed-two-all`) now assert the unchanged cursor, and the
   dedicated positive-assertion cases `erase-ed-two-keeps-cursor` /
   `erase-decsed-two-keeps-cursor` guard the invariant; `cur-vt100-clear-homes` has left the
-  `spec-suspect` list (reference agreement 132/133).
+  `spec-suspect` list (current reference agreement 133/134).
 - **A corpus authoring bug** — `osc-title-st-following-text` (and, masked by a DCS quirk,
   `dcs-following-text-position`) encode the ST terminator so `model.decode` drops a byte
   when literal text follows; the fix is to encode ST as `\x1b\x5c`.
