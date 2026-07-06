@@ -52,8 +52,11 @@ the top of each `Makefile`):
   debugging the disk images.
 - **[AppleCommander](https://applecommander.github.io)** — writes files onto DOS
   3.3 disk images (used by the `BRUN`-style projects).
-- **GNU Make** and **Git Bash** — the build environment (these examples were
-  developed on Windows; `SHELL` is set to Git Bash in each `Makefile`).
+- **GNU Make** and a POSIX shell — the build environment. Each `Makefile`
+  detects the OS: on **Windows** it uses absolute tool paths and Git Bash (how
+  these examples were originally developed); on **Linux/CI** it resolves the
+  tools from `PATH`, so the same pinned toolchain builds everywhere. Every tool
+  path is overridable from the environment or the `make` command line.
 
 ## Common workflow
 
@@ -69,6 +72,22 @@ make clean  # remove the build/ directory
 
 Build artefacts (`build/`) and MAME's per-machine runtime state (`nvram/`,
 `snap/`, `cfg/`) are generated on demand and are git-ignored.
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) builds every project with
+the **same pinned toolchain** ([`scripts/setup-toolchain.sh`](scripts/setup-toolchain.sh)),
+so a regression anywhere in the monorepo is caught — not just in `vt100-term-c`.
+
+- **`vt100-term-c`** is booted in headless MAME against the real Apple IIe ROMs
+  and run through its full conformance suite (plus a fast ROM-free pre-check).
+  See [vt100-term-c/docs/TESTING.md](vt100-term-c/docs/TESTING.md).
+- **The sibling projects** — `hello-asm`, `hello-c`, `keyboard-test-asm`,
+  `keyboard-test-c`, `pread-test-c`, `print-all-c`, `snake-asm`, `snake-c`, and
+  `ssc-serial-c` — are built by a DRY matrix. Path filters run each project's
+  job only when its own files (or the shared toolchain/workflow) change, and
+  `ssc-serial-c` also runs its ROM-free round-trip protocol test. These builds
+  need no ROMs.
 
 ## How the disks boot
 
