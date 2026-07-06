@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -170,6 +171,12 @@ class Case:
 # --------------------------------------------------------------------------
 # expectation checking -- returns a list of human-readable failure strings
 # --------------------------------------------------------------------------
+# A trailing Cursor Position Report (ESC[<row>;<col>R) at the very end of the wire
+# read-back -- the reply to a readiness/pacing ESC[6n probe. `check()` strips at
+# most one of these before an exact report comparison (see the "report" branch).
+_CPR_TAIL = re.compile(rb"\x1b\[\d+;\d+R\Z")
+
+
 def check(screen: Screen, expect: dict) -> list[str]:
     """Compare a rendered Screen against an ``expect`` block.
 
@@ -225,9 +232,24 @@ def check(screen: Screen, expect: dict) -> list[str]:
 
     if "report" in expect:
         want_bytes = decode(expect["report"])
-        if want_bytes not in screen.reports:
-            fails.append(f"report: expected {want_bytes!r} "
-                         f"in {screen.reports!r}")
+        got = screen.reports
+        # EXACT match, not containment (issue #31). Containment quietly accepted a
+        # doubled or malformed firmware reply (e.g. the reply concatenated with a
+        # harness-injected readiness CPR, or the same reply emitted twice), so a
+        # missing/garbled reply that merely *contained* the wanted bytes as a
+        # substring passed unseen. The MameTarget no longer appends its own ESC[6n
+        # probe to a case that already ends in a report query, so `got` should be
+        # precisely the firmware's reply. The one documented allowance: a case whose
+        # expected reply is NOT itself a CPR may still capture a single trailing
+        # readiness CPR (ESC[<row>;<col>R) if a probe was unavoidable -- strip at most
+        # one such trailing CPR and retry. Cases whose expected reply *is* a CPR get
+        # no leniency, so a doubled CPR is still caught.
+        ok = got == want_bytes
+        if not ok and not _CPR_TAIL.search(want_bytes):
+            ok = _CPR_TAIL.sub(b"", got) == want_bytes
+        if not ok:
+            fails.append(f"report: expected exactly {want_bytes!r} "
+                         f"got {got!r}")
 
     return fails
 
