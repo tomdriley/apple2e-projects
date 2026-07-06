@@ -219,7 +219,8 @@ Where pyte itself is wrong or incomplete, its verdict is discarded via
 `client/conformance/oracle_quirks.py` rather than raising a false regression. Catalogued
 pyte 0.8.2 quirks: NEL (`ESC E`) indexes without a carriage return; HPA (`` CSI ` ``) and
 SU/SD (`CSI S` / `CSI T`) unimplemented; SCOSC/SCORC (`CSI s` / `CSI u`) unimplemented; DCS
-strings render their payload instead of consuming it; DEC Special Graphics and alt-screen.
+strings render their payload instead of consuming it; tertiary DA (`CSI = c`) prints its `c`
+final byte instead of being consumed; DEC Special Graphics and alt-screen.
 Two channels are structurally invisible to pyte and handled through `Capabilities`
 (`reports=False, state=False`): the **wire `report` channel** (DSR/DA/DECRQSS replies) and
 **firmware state variables**. pyte can never oracle a case's `report` assertion, so
@@ -256,8 +257,10 @@ via the normal not-checkable path.
   `erase-decsed-two-keeps-cursor` guard the invariant; `cur-vt100-clear-homes` has left the
   `spec-suspect` list (current reference agreement 133/134).
 - **A corpus authoring bug** — `osc-title-st-following-text` (and, masked by a DCS quirk,
-  `dcs-following-text-position`) encode the ST terminator so `model.decode` drops a byte
-  when literal text follows; the fix is to encode ST as `\x1b\x5c`.
+  `dcs-following-text-position`) encoded the ST terminator so `model.decode` dropped a byte
+  when literal text followed; the fix is to encode ST as `\x1b\x5c`. Fixed in the issue #3
+  change, which also implements OSC/DCS consume and promotes those cases (and secondary DA)
+  from xfail to `supported`.
 
 
 Design note: pyte **augments**, it does not replace. The original proposal's literal "generate the

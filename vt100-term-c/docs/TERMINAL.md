@@ -13,21 +13,29 @@ stateDiagram-v2
     NORMAL --> ESC: 0x1B
     NORMAL --> NORMAL: printable / CR LF BS TAB BEL
     ESC --> CSI: '['
+    ESC --> STRING: ']' 'P' '^' '_' (OSC/DCS/PM/APC)
     ESC --> NORMAL: D M E (IND/RI/NEL) or unknown
-    CSI --> CSI: digits, ';', '?'
+    CSI --> CSI: digits, ';', '?', '>', '='
     CSI --> NORMAL: final byte 0x40-0x7E (dispatch)
+    STRING --> STRING: payload bytes
+    STRING --> NORMAL: ST (ESC \) or BEL
 ```
 
 - **NORMAL** renders printable bytes (`0x20`–`0x7E`) and acts on the C0 controls
   CR, LF, VT and FF (all three index down one line), BS, HT (tab to the next
   8-column stop), and BEL (speaker click).
 - **ESC** handles the two-byte escapes `ESC D` (IND), `ESC M` (RI), `ESC E`
-  (NEL); any other second byte is ignored.
+  (NEL); the string introducers `ESC ]` (OSC), `ESC P` (DCS), `ESC ^` (PM),
+  `ESC _` (APC) switch to STRING; any other second byte is ignored.
 - **CSI** (after `ESC [`) accumulates numeric parameters separated by `;`, notes
-  a leading `?` private marker, then dispatches on the final byte.
+  a leading `?` private marker or a `>`/`=` device-attributes marker, then
+  dispatches on the final byte.
+- **STRING** swallows an OSC/DCS/PM/APC payload until its String Terminator
+  (`ESC \`) or, for OSC, a BEL — so the payload never prints as literal text.
 
 Parameters: up to 4, each a 16-bit value; a `?` sets the private-mode flag used
-to distinguish, e.g., DECSTBM (`ESC[r`) from private resets (`ESC[?..r`).
+to distinguish, e.g., DECSTBM (`ESC[r`) from private resets (`ESC[?..r`), and a
+`>`/`=` marker distinguishes secondary/tertiary Device Attributes from primary.
 
 ## Control characters (NORMAL state)
 
@@ -92,11 +100,27 @@ operate within the cursor's row.
 |----------|------|--------|
 | `ESC [ 6 n` | DSR | Sends `ESC [ row ; col R` (used heavily by the test suite) |
 | `ESC [ 5 n` | DSR | Sends `ESC [ 0 n` (terminal OK) |
-| `ESC [ c` | DA | Sends `ESC [ ? 1 ; 0 c` (identify as a VT100) |
+| `ESC [ c` | Primary DA | Sends `ESC [ ? 1 ; 0 c` (identify as a VT100) |
+| `ESC [ > c` | Secondary DA | Sends `ESC [ > 1 ; 0 ; 0 c` (VT220-family, version 0) |
+| `ESC [ = c` | Tertiary DA | Consumed cleanly; no reply (the DCS-form report is not implemented) |
 | `ESC [ ? 1 h` / `l` | DECCKM | Enable / disable application cursor keys |
 | `ESC [ ? 47/1047/1049 h` / `l` | Alt screen | Switch to / from the alternate screen buffer (save + restore) |
 | `ESC [ ! p` | DECSTR | Soft reset: attributes, charset, modes, region (no clear) |
-| `ESC [ Ps m` | SGR | `7` = inverse video on, `0`/`27` = off; colors and bold consumed |
+| `ESC [ Ps m` | SGR | `7` = inverse video on, `0`/`27` = off; colors, bold, and 256/truecolor (`38;5;Ps` / `38;2;R;G;B`, and the `48;…` background forms) are consumed |
+
+### String sequences (OSC / DCS / PM / APC)
+
+| Sequence | Name | Action |
+|----------|------|--------|
+| `ESC ] … BEL` / `ESC ] … ST` | OSC | Operating System Command (e.g. window title `ESC]0;title BEL`) — payload swallowed, nothing rendered |
+| `ESC P … ST` | DCS | Device Control String (e.g. DECRQSS, sixel) — payload swallowed, nothing rendered |
+| `ESC ^ … ST` | PM | Privacy Message — payload swallowed |
+| `ESC _ … ST` | APC | Application Program Command — payload swallowed |
+
+These string controls run until their String Terminator (ST = `ESC \`) or, for
+OSC, a BEL. The terminal does not act on them (there is no window to title, and
+no DCS reply is generated), but it consumes the whole string so the payload can
+never leak onto the screen as literal text.
 
 ### Consumed and ignored
 
@@ -108,9 +132,14 @@ character set has no inverse lower case, inverse lower-case text shows as invers
 **upper** case.
 
 Colors, bold, and any other SGR attributes are parsed and discarded, as is any
-unrecognized final byte. This keeps `ls --color`, colored prompts, and other
-styled output readable rather than littering the screen with escape residue.
-Private mode sets/resets other than the ones listed above are likewise absorbed.
+unrecognized final byte. 256-color and truecolor selectors (`38;5;Ps`,
+`38;2;R;G;B`, and the `48;…` background forms) skip their color arguments so a
+color index or RGB component is never misread as an attribute. This keeps
+`ls --color`, colored prompts, and other styled output readable rather than
+littering the screen with escape residue. Private mode sets/resets other than
+the ones listed above are likewise absorbed. OSC/DCS/PM/APC strings are swallowed
+whole (until ST or BEL), so window-title, DECRQSS, and sixel-style payloads never
+appear on screen.
 
 ## Character sets and line drawing
 
