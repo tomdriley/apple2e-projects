@@ -82,7 +82,7 @@
         ]
       ]
     },
-    "notes": "Issue #2 guard: inverse video must not leak onto fresh text after an alt-screen round trip."
+    "notes": "Guard: inverse video must not leak onto fresh text after an alt-screen round trip."
   },
   {
     "id": "alt-1047-inverse-does-not-leak",
@@ -107,7 +107,7 @@
         ]
       ]
     },
-    "notes": "Issue #2 guard: inverse video must not leak through a 1047 alt-screen switch."
+    "notes": "Guard: inverse video must not leak through a 1047 alt-screen switch."
   },
   {
     "id": "alt-1049-inverse-does-not-leak",
@@ -132,7 +132,7 @@
         ]
       ]
     },
-    "notes": "Issue #2 guard: inverse video must not leak through a 1049 alt-screen switch."
+    "notes": "Guard: inverse video must not leak through a 1049 alt-screen switch."
   },
   {
     "id": "alt-1049-pager-inverse-status-clears",
@@ -163,7 +163,7 @@
         "attr_inverse": 0
       }
     },
-    "notes": "Issue #2 exact repro: a pager enters the alt screen (?1049h), draws an inverse status line, and quits (?1049l) with inverse still selected. The restored shell text must render normal, the alt-screen status line must be gone, and the parser's attr_inverse must be cleared. Fails against the pre-fix firmware, which left inverse selected across the rmcup transition."
+    "notes": "Exact pager repro: a pager enters the alt screen (?1049h), draws an inverse status line, and quits (?1049l) with inverse still selected. The restored shell text must render normal, the alt-screen status line must be gone, and the parser's attr_inverse must be cleared. Fails against firmware that leaves inverse selected across the rmcup transition."
   },
   {
     "id": "alt-1049-restores-cursor",
