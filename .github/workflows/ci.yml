@@ -23,7 +23,13 @@ concurrency:
 
 env:
   # Toolchain locations produced by scripts/setup-toolchain.sh (pinned cc65).
-  NONELIB: /opt/cc65/share/cc65/lib/none.lib
+  # CC65_PREFIX points at a user-writable dir (default /opt/cc65 is root-owned,
+  # which breaks actions/cache restore) so the cc65 build can be cached; see the
+  # "Cache cc65 toolchain" steps below. CC65_COMMIT mirrors the installer's pin
+  # and feeds the cache key so restores stay deterministic across runs.
+  CC65_COMMIT: cc3c40c54e51b2d9a22b63c85c418a2b11763377
+  CC65_PREFIX: /home/runner/cc65
+  NONELIB: /home/runner/cc65/share/cc65/lib/none.lib
   MAME: /usr/local/bin/mame
 
 jobs:
@@ -34,6 +40,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Cache cc65 toolchain (keyed on pinned commit)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.CC65_PREFIX }}
+          key: cc65-${{ runner.os }}-${{ env.CC65_COMMIT }}-${{ hashFiles('scripts/setup-toolchain.sh') }}
 
       - name: Install pinned toolchain (cc65 + MAME + AppleCommander + pyte)
         run: bash scripts/setup-toolchain.sh
@@ -69,6 +81,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Cache cc65 toolchain (keyed on pinned commit)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.CC65_PREFIX }}
+          key: cc65-${{ runner.os }}-${{ env.CC65_COMMIT }}-${{ hashFiles('scripts/setup-toolchain.sh') }}
 
       - name: Install pinned toolchain (cc65 + MAME + AppleCommander + pyte)
         run: bash scripts/setup-toolchain.sh
