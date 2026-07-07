@@ -60,6 +60,22 @@
     "notes": "DSR 6 reports the lower-right 24x80 screen cell."
   },
   {
+    "id": "report-cpr-6n-idempotent",
+    "category": "reports",
+    "spec_ref": "ECMA-48 DSR CPR; VT100-UG",
+    "input": "\\e[10;30H\\e[6n\\e[6n",
+    "status": "unsupported",
+    "basis": "spec",
+    "expect": {
+      "state": {
+        "cur_row": 10,
+        "cur_col": 30
+      },
+      "report": "\\e[10;30R"
+    },
+    "notes": "Documents the back-to-back ESC[6n desync: two ESC[6n with no intervening motion leave the RAM cur_col off by one. Root cause is a genuine 6551 receive-overrun, confirmed with a raw-socket repro that bypasses this harness: when the second ESC[6n overlaps the first CPR's transmission, the firmware's polled RX draining (serial_put only drains while spinning on TDRE, with gaps during put_dec division and the reply return path) fails to read RDR in time, the second request's ESC[6 prefix is overwritten, and the surviving 'n' prints as a glyph -- advancing cur_col. report_cursor() itself only READS the cursor, so the reply path never moves it. A single ESC[6n, or a paced ESC[6n<wait CPR>ESC[6n, are both clean; only the overlapping pair drifts (and loses the second CPR). This is real-hardware class, NOT a MAME artifact. The fix is interrupt-driven RX (retire the receive-overrun class); this stays open until then. Marked unsupported so it scores as a clean XFAIL now and flips to UNEXPECTED_PASS once that work lands -- promote to supported then. NOTE: the reports harness also chunks/paces input with its own ESC[6n, which amplifies the drift seen through the runner but is not the cause."
+  },
+  {
     "id": "report-dsr-status-ok",
     "category": "reports",
     "spec_ref": "ECMA-48 DSR status; VT100-UG",

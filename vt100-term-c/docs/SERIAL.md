@@ -86,6 +86,65 @@ the register that long loses data. Two situations cause it, and both are handled
 2. **Transmitting a reply** — mitigated by draining RX inside `serial_put()`'s
    transmit-wait loop.
 
+### Receive overrun while replying
+
+The 6551 is **full duplex** at the shift-register level — transmitter and receiver
+run independently — but it still buffers only **one** received byte in RDR. If the
+CPU does not read RDR within about a byte time (~1 ms at 9600 baud), the next
+completing byte overwrites it and the `OVERRUN` status bit is set. That is faithful
+6551 behaviour, and MAME's `mos6551` models it exactly (separate TX/RX state
+machines; overwrite-on-overrun in the receiver).
+
+Emitting a CPR is *not* fully covered by our RX draining. `serial_put()` drains RX
+only while it spins on `TDRE == 0`; several windows in the reply path leave RDRF
+unserviced for too long:
+
+- `put_dec()` does software `/10` / `%10` division with no RX polling;
+- when `TDRE` is already set on entry, `serial_put()` writes immediately and drains
+  nothing;
+- after the final reply byte is queued, control returns up through
+  `report_cursor()` / the parser before the main loop pumps RX again.
+
+So when two `ESC[6n` requests arrive back to back and the **second overlaps the
+first CPR's transmission**, a byte of the second request is overrun in RDR: its
+`ESC[6` prefix never reaches the parser, the surviving `n` prints as a literal
+glyph, and the RAM `cur_col` advances by one. (`report_cursor()` only *reads* the
+cursor via pure getters, so the reply path itself never moves it — the drift is
+entirely the stray glyph.)
+
+This was confirmed with a **raw-socket reproduction that bypasses the conformance
+harness entirely** (no windowing, no injected `ESC[6n`; RAM read directly via the
+MAME Lua memory probe):
+
+| Input (cursor parked at row 10, col 30) | `cur_col` drift | CPRs returned | Screen |
+| --- | --- | --- | --- |
+| single `ESC[6n` | 0 | 1 | clean |
+| `ESC[6n` → wait for CPR → `ESC[6n` (paced) | 0 | 2 | clean |
+| `ESC[6n ESC[6n` back to back (overlaps TX) | **+1** | **1** | stray `n` |
+
+Only the overlapping pair drifts, and it also **loses the second CPR** (the second
+request is genuinely corrupted). The paced pair is perfectly clean with both CPRs
+correct. This is therefore a **genuine firmware receive-overrun**, real-hardware
+class under the same byte timing — **not** a MAME artifact. (An earlier analysis
+misattributed it to the emulator; the raw repro and the MAME 6551 source disprove
+that.)
+
+The correct fix is **interrupt-driven RX** — an ISR that drains RDR the moment
+a byte arrives, decoupled from whatever the main loop is transmitting. The pointer
+FIFO in `serial.c` is already structured for that (single-producer/consumer, no
+critical section). A smaller polled fix (interleave `serial_pump()` through
+`report_cursor()` / `put_dec()`, or make `serial_put()` drain RX *before* the TDRE
+check) could also close this specific window. This defect is tracked to land with
+the interrupt-driven RX work.
+
+The conformance corpus documents the defect with `report-cpr-6n-idempotent`
+(category `reports`), marked `unsupported` so it scores as a clean **XFAIL** today
+and flips to **UNEXPECTED_PASS** once the interrupt-driven RX work removes the
+overrun — promote it to `supported` then. Note the reports harness independently
+chunks and paces input with its own `ESC[6n`, which amplifies the drift observed
+*through the runner* but is not its cause. See [docs/CONFORMANCE.md](CONFORMANCE.md)
+and [docs/TERMINAL.md](TERMINAL.md#csi--reports-and-modes).
+
 ## MAME wiring
 
 MAME connects the card's RS-232 port to a null modem whose bitstream is a TCP

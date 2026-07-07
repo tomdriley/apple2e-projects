@@ -236,6 +236,20 @@ diff like any other case, with only its wire `report` key dropped. Pure wire-onl
 cases (bare `ESC[5n`, `ESC[c`, DECRQM, DECRQSS) have nothing pyte can observe and still SKIP
 via the normal not-checkable path.
 
+`report-cpr-6n-idempotent` (two back-to-back `ESC[6n` leave the stored
+cursor off by one) is authored `unsupported`/`spec` for a related but distinct
+reason: it documents a **genuine firmware receive-overrun**, not a harness quirk. A
+raw-socket repro that bypasses this harness confirms the drift — when the second
+`ESC[6n` overlaps the first CPR's transmission, the firmware's polled RX draining
+misses a byte, the second request's `ESC[6` prefix is overrun in the 6551's
+one-byte RDR, and the surviving `n` prints as a glyph that advances `cur_col`. It is
+real-hardware class; MAME models the 6551 overrun faithfully. The fix is
+interrupt-driven RX, so the case is marked `unsupported` to score as a clean XFAIL
+until that work lands, whereupon it flips to UNEXPECTED_PASS — the signal to promote
+it to `supported`. The reports harness *also* chunks and paces input with its own
+`ESC[6n`, which amplifies the drift seen through the runner but is not the cause. See
+[docs/SERIAL.md](SERIAL.md#receive-overrun-while-replying).
+
 ### What the first run found
 
 - **Reference agreement at the first oracle run: 98.5%** (131/133 strict-spec cases);
