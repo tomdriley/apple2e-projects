@@ -112,7 +112,7 @@
         "[=c"
       ]
     },
-    "notes": "Issue #3: tertiary DA (ESC[=c) is consumed cleanly -- the '=' and 'c' never print and the parser resumes normal rendering. The DCS-style tertiary reply is intentionally not implemented (see follow-ups)."
+    "notes": "Tertiary DA (ESC[=c) is consumed cleanly -- the '=' and 'c' never print and the parser resumes normal rendering. The DCS-style tertiary reply is intentionally not implemented (see follow-ups)."
   },
   {
     "id": "report-da3-tertiary-no-reply",
