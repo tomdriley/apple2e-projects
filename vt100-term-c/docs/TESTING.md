@@ -415,7 +415,7 @@ counter overflow that flow control normally prevents) → add a self-contained C
 file under `tests/` that mirrors the logic, compile it for cc65's `sim6502`
 target, and run it under `sim65`, returning the failing-check count from `main()`
 so the build fails on a regression. Wire it into the `test` target in the
-[`Makefile`](../../Makefile) and run it with `make test`; the `hermetic-checks` CI
+[`Makefile`](../Makefile) and run it with `make test`; the `hermetic-checks` CI
 job already invokes it. `tests/ring_test.c` (the RX-ring test) is the
 model to copy — include both the fixed and the pre-fix logic so the assertions
 provably distinguish them.
