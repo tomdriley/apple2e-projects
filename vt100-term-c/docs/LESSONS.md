@@ -82,35 +82,63 @@ count. XON/XOFF at 192 bytes normally keeps the ring from ever reaching 256, whi
 is why this stayed hidden — but a host that ignores or lags XOFF walks straight
 into it.
 
-Fix: widen `r_count` to `unsigned` (a full ring genuinely holds 256 bytes, one
-more than a byte can represent) and compare `r_count < RING_SIZE`. That both
-detects the full condition and silences the two warnings. `serial_rx_ready()`
-still returns `unsigned char`, so it clamps the lone value 256 to 255 rather than
-truncating it to 0 (callers use it only as a "bytes waiting" boolean).
+The obvious quick fix is to widen `r_count` to `unsigned` and compare
+`r_count < RING_SIZE` — that detects full and silences the warnings. But it leaves
+a 16-bit occupancy counter that is *redundant* with the head/tail pointers and,
+being multi-byte, is not read or written atomically — a wart for the planned
+interrupt-driven RX path. The shipped fix instead **drops the counter entirely**
+and derives the state from the two pointers, the way a hardware FIFO does:
 
-The lesson mirrors the overrun saga: **a counter must be wide enough to represent
-the count it guards.** Trust the compiler's "always true/false" warnings — here one
-flagged a real data-corruption path.
+- `r_head`/`r_tail` stay `unsigned char`, so they wrap mod 256 for free.
+- One slot is reserved as a sentinel, so `r_head == r_tail` is unambiguously
+  *empty* and `(unsigned char)(r_head + 1) == r_tail` is *full* (255 usable).
+- Occupancy for the XON/XOFF thresholds is `(unsigned char)(r_head - r_tail)` — a
+  single-byte subtract, with no counter that can overflow.
+- `serial_rx_ready()` returns that pointer distance directly (0..255), so the old
+  clamp is gone too.
+
+Why a sentinel slot rather than `RING_SIZE = 255`? Two same-width pointers can
+represent only 256 distinct differences but a 256-slot ring has 257 occupancy
+states (0..256), so `head == tail` would mean *both* empty and completely full —
+ambiguous. Reserving one slot (or, alternatively, an extra wrap bit) is what breaks
+that tie. And `RING_SIZE = 255` specifically is the worst option: `r_head`/`r_tail`
+rely on **free mod-256 wrap** (`ring[r_head]`, no explicit `% RING_SIZE`), so
+dropping to 255 would force a modulo-255 or a wrap branch on every push and pop —
+more hot-path code than the one unused byte a sentinel costs.
+
+The pointer-compare ring is also smaller and faster than the counter version at the
+6502 level: no `inc low / bne / inc high` counter upkeep, an absolute-indexed store
+instead of building a zero-page pointer, and a single-byte threshold compare (the
+firmware image even shrank a few bytes). Because each pointer has exactly one
+writer, the single-producer/single-consumer split is lock-free — the natural shape
+for interrupt-driven RX.
+
+The lesson: **an occupancy counter is redundant with the pointers, and redundant
+state is somewhere for a bug to hide** — here, a counter too narrow to represent a
+full ring, which cc65 flagged as an always-true comparison. Trust those "always
+true/false" warnings; this one marked a real data-corruption path. Prefer the
+two-pointer FIFO that hardware uses: empty when the pointers meet, full when the
+writer sits one slot behind the reader.
 
 **Why there is no corpus/MAME regression test for this.** The overflow can't be
 provoked through the conformance harness: its transport is *windowed-lossless* by
 construction. The sender batches the payload into `WINDOW`-byte groups and blocks
 for a cursor-report (DSR/CPR) ack before releasing the next window, with
 `WINDOW = 96` — deliberately `< ring/2` (see `client/bench.py`) — and it honors
-XOFF. So a conformance case can never put more than ~96 bytes in flight, and
-`r_count` never approaches `RING_SIZE`; the very thing that makes the harness
-deterministic also makes it structurally incapable of flooding the ring. A real
-overflow test would need to bypass flow control and race the drain loop, which the
-harness will not do. The guard is therefore covered instead by (1) the cc65
-warning's disappearance (the comparison is no longer trivially constant), (2) the
-existing ROM-backed MAME conformance gate (proves the widened counter didn't
-regress normal receive), and (3) a ROM-free host unit test (`make test`, see
-[docs/TESTING.md](TESTING.md)) that drives a mirror of the ring past 256 directly
-and asserts FIFO integrity with no lost or overwritten bytes. Accepting the absent
-corpus test is a deliberate, recorded deviation, not an oversight. A natural
-follow-up is to extract the ring into a shared module the unit test can link
-directly (rather than mirror), which also matters for the planned interrupt-driven
-RX path.
+XOFF. So a conformance case can never put more than ~96 bytes in flight, and the
+ring never approaches full; the very thing that makes the harness deterministic
+also makes it structurally incapable of flooding the ring. A real overflow test
+would need to bypass flow control and race the drain loop, which the harness will
+not do. The full/empty logic is therefore covered instead by (1) the cc65 warning's
+disappearance (the old always-true comparison is gone), (2) the existing ROM-backed
+MAME conformance gate (proves the ring rework didn't regress normal receive), and
+(3) a ROM-free host unit test (`make test`, see [docs/TESTING.md](TESTING.md)) that
+drives a mirror of the ring past capacity directly and asserts FIFO integrity —
+including full detection via `(head + 1) == tail` — with no lost or overwritten
+bytes. Accepting the absent corpus test is a deliberate, recorded deviation, not an
+oversight. A natural follow-up is to extract the ring into a shared module the unit
+test can link directly (rather than mirror), which also matters for the
+interrupt-driven RX path.
 
 ## Memory-mapped I/O must be `volatile`
 

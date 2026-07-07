@@ -15,10 +15,11 @@ logic that a boot test cannot observe:
 The ring unit test exists because the RX ring-full bug is a
 buffer-overflow/type defect that a conformance corpus case cannot reliably
 observe — flow control (XON/XOFF) normally keeps the ring from ever filling. It
-mirrors the ring FIFO from `serial.c`, drives it past `RING_SIZE`, and asserts no
-bytes are lost or overwritten; it also runs the pre-fix logic to prove the checks
-have teeth. Keep the mirror in sync with `serial.c` (a follow-up is to extract the
-ring into a shared module the test can link directly).
+mirrors the count-free, sentinel-slot ring FIFO from `serial.c`, drives it past its
+255-byte capacity, and asserts that full is detected (`(head + 1) == tail`) with no
+bytes lost or overwritten; it also runs the original counter-based logic to prove
+the checks have teeth. Keep the mirror in sync with `serial.c` (a follow-up is to
+extract the ring into a shared module the test can link directly).
 
 ## Continuous integration & reproducible toolchain
 

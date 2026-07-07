@@ -10,11 +10,16 @@
  * follow-up (relevant to future interrupt-driven RX) is to extract the ring into a
  * shared module this test can link directly instead of mirroring.
  *
- * It exercises both variants:
- *   - "fixed"  : r_count widened to unsigned, guard `r_count < RING_SIZE`.
- *   - "buggy"  : the pre-fix logic (unsigned char count, full never detected),
- *                modelled as an unconditional write so we do not re-introduce
- *                the "comparison is always true" warning the fix removed.
+ * It exercises two ring variants:
+ *   - "fixed"  : the shipped design -- a count-free single-producer/single-
+ *                consumer FIFO. head/tail are unsigned char (free mod-256 wrap)
+ *                and one slot is kept as a sentinel, so `head == tail` means
+ *                empty and `(head + 1) == tail` means full (255 bytes usable).
+ *                No occupancy counter exists to overflow.
+ *   - "buggy"  : the original pre-fix logic (an unsigned char occupancy count,
+ *                so the `count != RING_SIZE` guard was always true and a full
+ *                ring was never detected). Modelled as an unconditional write so
+ *                we do not re-introduce the "comparison is always true" warning.
  * Asserting on both proves the scenarios have teeth: the fixed ring must keep
  * FIFO integrity across an overflow while the buggy ring must corrupt it.
  *
@@ -25,24 +30,26 @@
 
 #define RING_SIZE 256
 
-/* ---- Fixed ring: mirrors serial.c's fixed ring ------------------------- */
+/* ---- Fixed ring: mirrors serial.c's count-free sentinel-slot FIFO ------- */
 static unsigned char f_ring[RING_SIZE];
-static unsigned char f_head, f_tail;
-static unsigned      f_count; /* wider than a byte: a full ring holds 256 */
+static unsigned char f_head, f_tail; /* the only state -- no occupancy counter */
 
 static void f_reset(void)
 {
-    f_head  = 0;
-    f_tail  = 0;
-    f_count = 0;
+    f_head = 0;
+    f_tail = 0;
 }
 
-/* Returns 1 if the byte was accepted, 0 if the ring was full (byte dropped). */
+/* Returns 1 if the byte was accepted, 0 if the ring was full (byte dropped).
+ * Full is `(head + 1) == tail`, so one slot is always left empty as a sentinel
+ * and `head == tail` unambiguously means empty. */
 static unsigned char f_put(unsigned char b)
 {
-    if (f_count < RING_SIZE) { /* mirrors serial.c: r_count < RING_SIZE */
-        f_ring[f_head++] = b;
-        ++f_count;
+    unsigned char nh;
+    nh = (unsigned char)(f_head + 1);
+    if (nh != f_tail) {
+        f_ring[f_head] = b;
+        f_head         = nh;
         return 1;
     }
     return 0;
@@ -52,16 +59,15 @@ static unsigned char f_put(unsigned char b)
 static int f_get(void)
 {
     unsigned char b;
-    if (f_count == 0) {
+    if (f_head == f_tail) { /* empty */
         return -1;
     }
     b = f_ring[f_tail++];
-    --f_count;
     return (int)b;
 }
 
-/* Mirrors serial_rx_ready: clamp the lone value 256 so it never truncates to 0. */
-static unsigned char f_ready(void) { return (unsigned char)(f_count > 255 ? 255 : f_count); }
+/* Mirrors serial_rx_ready: occupancy is the single-byte pointer distance. */
+static unsigned char f_ready(void) { return (unsigned char)(f_head - f_tail); }
 
 /* ---- Buggy ring: the pre-fix behaviour, for a teeth check --------------- */
 static unsigned char b_ring[RING_SIZE];
@@ -124,26 +130,27 @@ int main(void)
     printf("ring_test: 6551 RX ring buffer\n");
 
     /* --- Scenario A: overflow integrity (the reported bug) --------------- *
-     * Push 300 bytes into a 256-slot ring. The first 256 carry values 0..255;
-     * the surplus 44 carry a sentinel (0xAA). A correct ring keeps the first
-     * 256 in FIFO order and drops the surplus. */
+     * Push 300 bytes into a 256-slot ring that keeps one sentinel slot, so at
+     * most RING_SIZE-1 (255) are accepted (values 0..254) and the surplus is
+     * dropped. A correct ring keeps the first 255 in FIFO order and never
+     * overwrites unread data. */
     f_reset();
     accepted = 0;
     for (i = 0; i < 300; ++i) {
-        v = (unsigned char)(i < 256 ? i : 0xAA);
-        accepted += f_put(v);
+        accepted += f_put((unsigned char)i);
     }
-    check("fixed: accepts exactly RING_SIZE, drops the overflow", accepted == 256 && f_count == 256);
-    check("fixed: full ring reports ready (rx_ready clamps 256->255)", f_ready() == 255);
+    check("fixed: accepts RING_SIZE-1 (sentinel slot), drops the overflow",
+        accepted == 255 && f_ready() == 255);
+    check("fixed: full detected via (head+1)==tail", f_put(0xAA) == 0);
     ok = 1;
-    for (i = 0; i < 256; ++i) {
+    for (i = 0; i < 255; ++i) {
         g = f_get();
-        if (g != (int)i) {
+        if (g != (int)(unsigned char)i) {
             ok = 0;
         }
     }
-    check("fixed: FIFO integrity preserved across overflow (bytes 0..255)", ok);
-    check("fixed: empty after draining, no phantom bytes", f_get() == -1 && f_count == 0);
+    check("fixed: FIFO integrity preserved across overflow (bytes 0..254)", ok);
+    check("fixed: empty after draining, no phantom bytes", f_get() == -1 && f_ready() == 0);
 
     /* Same scenario on the buggy ring must misbehave, proving the checks bite. */
     b_reset();
@@ -155,12 +162,12 @@ int main(void)
     first = b_get(); /* slot 0 was overwritten when head lapped tail */
     check("buggy: FIFO corrupted after overflow (early byte overwritten)", first == 0xAA);
 
-    /* --- Scenario B: rx_ready must not truncate a full ring to "empty" --- */
+    /* --- Scenario B: a full ring must read as full, never as empty ------- */
     f_reset();
     for (i = 0; i < 256; ++i) {
         (void)f_put((unsigned char)i);
     }
-    check("fixed: rx_ready nonzero when full (no 256->0 truncation)", f_ready() != 0);
+    check("fixed: rx_ready reports 255 when full (never truncates to 0)", f_ready() == 255);
     b_reset();
     for (i = 0; i < 256; ++i) {
         b_put((unsigned char)i);
@@ -178,11 +185,11 @@ int main(void)
             ok = 0;
         }
     }
-    check("fixed: FIFO order preserved without overflow", ok && f_count == 0);
+    check("fixed: FIFO order preserved without overflow", ok && f_ready() == 0);
 
     /* --- Scenario D: head/tail wrap mod 256 keeps FIFO order ------------- *
-     * Push 200, pop 100, push 150 more (head/tail cross the 256 boundary but
-     * occupancy stays < RING_SIZE, so nothing is dropped). */
+     * Push 200, pop 100, push 150 more. head/tail cross the 256 boundary but
+     * occupancy stays below the 255-byte capacity, so nothing is dropped. */
     f_reset();
     for (i = 0; i < 200; ++i) {
         (void)f_put((unsigned char)i);
@@ -199,7 +206,7 @@ int main(void)
             ok = 0;
         }
     }
-    check("fixed: head/tail wrap mod 256 keeps FIFO order", ok && f_count == 0);
+    check("fixed: head/tail wrap mod 256 keeps FIFO order", ok && f_ready() == 0);
 
     if (failures == 0) {
         printf("ring_test: PASS\n");

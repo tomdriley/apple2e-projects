@@ -60,14 +60,19 @@ flowchart LR
   it waits**. Without that, a multi-byte reply (like the `ESC[?1;0c` answer to a
   Device Attributes request) would block long enough for the host's next bytes to
   overrun the receive register. See [docs/LESSONS.md](LESSONS.md).
-- **When the ring is full** (all 256 slots occupied), both `serial_pump()` and
-  `serial_put()` stop copying and leave the byte in the hardware register rather
-  than lapping `r_head` past `r_tail` and silently overwriting unread data. The
-  occupancy counter `r_count` is a plain `unsigned` (not `unsigned char`) because a
-  full ring holds 256 bytes, which a byte-wide counter cannot represent — it would
-  wrap `255 -> 0` and the "full" guard could never fire. XON/XOFF normally keeps the
-  ring well below full, so reaching this cap means the host ignored XOFF; the excess
-  is dropped cleanly instead of corrupting the buffer.
+- **When the ring is full**, both `serial_pump()` and `serial_put()` stop copying
+  and leave the byte in the hardware register rather than lapping `r_head` past
+  `r_tail` and silently overwriting unread data. The ring carries **no occupancy
+  counter**: it is a single-producer/single-consumer FIFO whose only state is
+  `r_head` and `r_tail` (both `unsigned char`, so they wrap mod 256 for free). One
+  slot is kept as a sentinel, so `r_head == r_tail` means empty and
+  `(r_head + 1) == r_tail` means full — 255 bytes usable. Occupancy for the
+  XON/XOFF thresholds is just `(unsigned char)(r_head - r_tail)`. Because each
+  pointer is written by only one side and a single-byte store is atomic on the
+  6502, this needs no critical section even once RX becomes interrupt-driven.
+  XON/XOFF normally keeps the ring well below full, so reaching the cap means the
+  host ignored XOFF; the excess is dropped cleanly instead of corrupting the
+  buffer.
 
 ## Overrun: the recurring theme
 
