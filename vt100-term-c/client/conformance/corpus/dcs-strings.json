@@ -12,7 +12,7 @@
         "q m"
       ]
     },
-    "notes": "Issue #3: DECRQSS DCS payload bytes are swallowed and never displayed (the DECRQSS reply itself is not implemented)."
+    "notes": "DECRQSS DCS payload bytes are swallowed and never displayed (the DECRQSS reply itself is not implemented)."
   },
   {
     "id": "dcs-sixel-payload-absent",
@@ -27,7 +27,7 @@
         "qSIXELPAYLOAD"
       ]
     },
-    "notes": "Issue #3: DCS sixel-style payloads are swallowed and do not leak to the character display."
+    "notes": "DCS sixel-style payloads are swallowed and do not leak to the character display."
   },
   {
     "id": "dcs-following-text-position",
@@ -49,7 +49,7 @@
         "qPAYLOAD"
       ]
     },
-    "notes": "Issue #3: text after a DCS renders where the DCS began, with no payload leakage."
+    "notes": "Text after a DCS renders where the DCS began, with no payload leakage."
   },
   {
     "id": "dcs-private-payload-absent",
@@ -64,6 +64,6 @@
         "+qPRIVATE"
       ]
     },
-    "notes": "Issue #3: private DCS strings are swallowed and their payload remains off-screen."
+    "notes": "Private DCS strings are swallowed and their payload remains off-screen."
   }
 ]

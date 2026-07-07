@@ -13,7 +13,7 @@
         "]0;MYTITLE"
       ]
     },
-    "notes": "Issue #3: OSC title strings should affect metadata only and must not render on the display."
+    "notes": "OSC title strings should affect metadata only and must not render on the display."
   },
   {
     "id": "osc-title-st-absent",
@@ -29,7 +29,7 @@
         "]2;MYTITLE"
       ]
     },
-    "notes": "Issue #3: ST-terminated OSC title strings should not leak their payload to the screen."
+    "notes": "ST-terminated OSC title strings should not leak their payload to the screen."
   },
   {
     "id": "osc-title-bel-following-text",
@@ -52,7 +52,7 @@
         "]0;MYTITLE"
       ]
     },
-    "notes": "Issue #3: text after a BEL-terminated OSC should render at the original cursor position."
+    "notes": "Text after a BEL-terminated OSC should render at the original cursor position."
   },
   {
     "id": "osc-title-st-following-text",
@@ -75,7 +75,7 @@
         "]2;MYTITLE"
       ]
     },
-    "notes": "Issue #3: text after an ST-terminated OSC should render at the original cursor position."
+    "notes": "Text after an ST-terminated OSC should render at the original cursor position."
   },
   {
     "id": "osc-icon-name-bel-absent",
@@ -91,6 +91,6 @@
         "]1;MYTITLE"
       ]
     },
-    "notes": "Issue #3: OSC icon-name payloads should not render as literal display text."
+    "notes": "OSC icon-name payloads should not render as literal display text."
   }
 ]

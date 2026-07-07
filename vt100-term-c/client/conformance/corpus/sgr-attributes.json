@@ -184,7 +184,7 @@
   {
     "id": "sgr-foreground-color-ignored",
     "category": "sgr-attributes",
-    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG; issue #3",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
     "input": "\\e[31mRED",
     "status": "supported",
     "basis": "tolerance",
@@ -213,7 +213,7 @@
   {
     "id": "sgr-background-color-ignored",
     "category": "sgr-attributes",
-    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG; issue #3",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
     "input": "\\e[41mBG",
     "status": "supported",
     "basis": "tolerance",
@@ -242,7 +242,7 @@
   {
     "id": "sgr-256-color-ignored",
     "category": "sgr-attributes",
-    "spec_ref": "ECMA-48 ?8.3.x SGR; xterm ctlseqs: 256-color SGR; issue #3",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; xterm ctlseqs: 256-color SGR",
     "input": "\\e[38;5;9mBRIGHTRED",
     "status": "supported",
     "basis": "tolerance",
@@ -271,7 +271,7 @@
   {
     "id": "sgr-truecolor-ignored",
     "category": "sgr-attributes",
-    "spec_ref": "ECMA-48 ?8.3.x SGR; xterm ctlseqs: truecolor SGR; issue #3",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; xterm ctlseqs: truecolor SGR",
     "input": "\\e[38;2;255;0;0mTRUE",
     "status": "supported",
     "basis": "tolerance",
@@ -300,7 +300,7 @@
   {
     "id": "sgr-ignored-color-then-inverse",
     "category": "sgr-attributes",
-    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG; issue #3",
+    "spec_ref": "ECMA-48 ?8.3.x SGR; VT100-UG",
     "input": "\\e[31mRED\\e[7mINV",
     "status": "supported",
     "expect": {
@@ -334,7 +334,7 @@
   {
     "id": "sgr-256-index-7-not-inverse",
     "category": "sgr-attributes",
-    "spec_ref": "xterm ctlseqs: 256-color SGR (38;5;Ps); issue #3",
+    "spec_ref": "xterm ctlseqs: 256-color SGR (38;5;Ps)",
     "input": "\\e[38;5;7mIDX7",
     "status": "supported",
     "basis": "tolerance",
@@ -358,12 +358,12 @@
         "attr_inverse": 0
       }
     },
-    "notes": "Issue #3: the 256-color index argument (here 7) must be skipped, not misread as SGR 7 (inverse). Fails on the pre-fix parser, which treated the trailing 7 as inverse-on."
+    "notes": "The 256-color index argument (here 7) must be skipped, not misread as SGR 7 (inverse). Fails on the pre-fix parser, which treated the trailing 7 as inverse-on."
   },
   {
     "id": "sgr-truecolor-component-7-not-inverse",
     "category": "sgr-attributes",
-    "spec_ref": "xterm ctlseqs: truecolor SGR (38;2;R;G;B); issue #3",
+    "spec_ref": "xterm ctlseqs: truecolor SGR (38;2;R;G;B)",
     "input": "\\e[38;2;7;7;7mRGB",
     "status": "supported",
     "basis": "tolerance",
@@ -387,6 +387,6 @@
         "attr_inverse": 0
       }
     },
-    "notes": "Issue #3: truecolor R/G/B components (here 7) must be skipped, not misread as SGR 7 (inverse). Fails on the pre-fix parser, which read a 7 component as inverse-on."
+    "notes": "Truecolor R/G/B components (here 7) must be skipped, not misread as SGR 7 (inverse). Fails on the pre-fix parser, which read a 7 component as inverse-on."
   }
 ]
