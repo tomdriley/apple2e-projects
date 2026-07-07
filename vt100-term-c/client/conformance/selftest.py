@@ -45,6 +45,9 @@ def test_decode():
     assert decode(r"A\r\nB") == b"A\r\nB"
     assert decode(r"\xc3\xa9") == b"\xc3\xa9"
     assert decode(r"\a\b\t\v\f\0") == b"\x07\x08\x09\x0b\x0c\x00"
+    assert decode(r"\e\N") == b"\x1bN"                              # unknown escape drops the backslash -> ST 0x5c lost
+    assert decode(r"\x1b\x5c") == b"\x1b\x5c"                       # explicit ST bytes survive intact
+    assert decode(r"\e]2;T\x1b\x5cNEXT") == b"\x1b]2;T\x1b\x5cNEXT" # ST + following text preserved
 
 
 def test_check_each_key():
