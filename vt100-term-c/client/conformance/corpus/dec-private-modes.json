@@ -151,7 +151,7 @@
     "spec_ref": "VT100-UG / DEC-private DECTCEM",
     "input": "\\e[?25lHIDDEN-STILL-TEXT",
     "status": "supported",
-    "basis": "unobservable",
+    "basis": "spec",
     "expect": {
       "rows": [
         [
@@ -159,9 +159,12 @@
           1,
           "HIDDEN-STILL-TEXT"
         ]
-      ]
+      ],
+      "state": {
+        "cursor_visible": 0
+      }
     },
-    "notes": "DECTCEM ?25l hides the cursor, which does not alter the glyph plane; the observable spec effect is that following text still renders, which the firmware does. Cursor visibility itself is not probeable."
+    "notes": "DECTCEM ?25l hides the cursor: the firmware clears its cursor_visible flag (probed from RAM) and following text still renders, unperturbed. The visible-cursor overlay is stripped from the glyph plane by the probe."
   },
   {
     "id": "mode-dectcem-show-benign",
@@ -169,7 +172,7 @@
     "spec_ref": "VT100-UG / DEC-private DECTCEM",
     "input": "\\e[?25l\\e[?25hSHOWN-STILL-TEXT",
     "status": "supported",
-    "basis": "unobservable",
+    "basis": "spec",
     "expect": {
       "rows": [
         [
@@ -177,9 +180,12 @@
           1,
           "SHOWN-STILL-TEXT"
         ]
-      ]
+      ],
+      "state": {
+        "cursor_visible": 1
+      }
     },
-    "notes": "DECTCEM ?25h shows the cursor; the observable spec effect is that following text still renders, which the firmware does. Cursor visibility itself is not probeable."
+    "notes": "DECTCEM ?25h re-shows the cursor after ?25l hid it: the firmware sets cursor_visible back to 1 (probed from RAM) and following text still renders. Exercises the show direction from a genuinely hidden state, so it is not degenerate."
   },
   {
     "id": "mode-irm-set-inserts-printing",

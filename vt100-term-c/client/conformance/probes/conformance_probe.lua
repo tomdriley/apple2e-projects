@@ -13,7 +13,11 @@
 --   STATE              "name value" per firmware variable, for symbols listed
 --                      in build/conf_syms.txt (name=hexaddr). Absent file or
 --                      symbol => the STATE section is simply shorter; the
---                      runner degrades gracefully.
+--                      runner degrades gracefully. This includes the cursor_*
+--                      group (cursor_visible/shown/col/row/saved) that backs
+--                      DECTCEM verification and the visible-cursor overlay strip
+--                      done in target_mame.py; symbols are read generically, so
+--                      no change is needed here to expose them.
 --   END                sentinel so a partial read is detected and retried.
 --
 -- Rows are emitted at full width (NOT right-trimmed) so a cell/attr assertion

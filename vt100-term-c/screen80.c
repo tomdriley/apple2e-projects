@@ -39,6 +39,27 @@ unsigned char scroll_bot = SCR_ROWS - 1;
 /* Current character attribute: 0 = normal, 1 = inverse (SGR 7). */
 unsigned char cur_attr;
 
+/* Visible text-cursor overlay state. These are non-static for the same reason as
+ * the cursor position above: the conformance state probe reads them from RAM to
+ * verify DECTCEM (issue #27) and to strip the cursor overlay from the glyph and
+ * inverse planes so a probe always sees the logical screen.
+ *
+ *   cursor_visible  DECTCEM flag: 1 = show the cursor per mode (default 1).
+ *   cursor_shown    1 = the cursor is currently painted on the video page.
+ *   cursor_col/row  the cell the cursor is painted at while cursor_shown.
+ *   cursor_saved    the true video byte under that cell (the restore target).
+ *
+ * Ordering invariant (matters for the async frame-notifier probe): whenever an
+ * inverted cursor byte is in video RAM, cursor_shown == 1 and cursor_saved holds
+ * the real glyph. scr_cursor_paint sets cursor_shown (and saves the glyph) before
+ * writing the inverted cell; scr_cursor_erase restores the cell before clearing
+ * cursor_shown. A snapshot taken mid-update is therefore always self-consistent. */
+unsigned char cursor_visible = 1;
+unsigned char cursor_shown;
+unsigned char cursor_col;
+unsigned char cursor_row;
+unsigned char cursor_saved;
+
 #define BANK_AUX()  (TXTPAGE2 = 0) /* PAGE2 on : CPU sees AUX $0400-$07FF */
 #define BANK_MAIN() (TXTPAGE1 = 0) /* PAGE2 off: CPU sees MAIN            */
 #define BLANK       0xA0           /* high-bit space = empty cell         */
@@ -63,6 +84,22 @@ static void cell_put(unsigned char col, unsigned char row, unsigned char ch)
     }
     *p = ch;
     BANK_MAIN(); /* leave main banked in as the resting state */
+}
+
+/* Read one already-encoded glyph back from the cell at (col,row). Mirrors the
+ * banking of cell_put; leaves MAIN banked as the resting state. */
+static unsigned char cell_get(unsigned char col, unsigned char row)
+{
+    unsigned char *p = (unsigned char *)(rowbase[row] + (col >> 1));
+    unsigned char  ch;
+    if (col & 1) {
+        BANK_MAIN(); /* odd columns are stored in main memory */
+    } else {
+        BANK_AUX(); /* even columns are stored in aux memory  */
+    }
+    ch = *p;
+    BANK_MAIN(); /* leave main banked in as the resting state */
+    return ch;
 }
 
 /* Read one whole video row's 80 glyphs into buf, using just two bank switches:
@@ -195,15 +232,17 @@ static void scroll_down(void) { region_down(scroll_top, scroll_bot); }
 
 void scr_init(void)
 {
-    SET80STORE = 0; /* PAGE2 now banks the text page for the CPU */
-    SET80VID   = 0; /* 80-column video on                        */
-    SETALTCHAR = 0; /* alternate character set -> real lowercase  */
-    TXTSET     = 0; /* text mode                                 */
-    MIXCLR     = 0; /* full screen (no mixed graphics)           */
-    TXTPAGE1   = 0; /* display page 1 / main bank for the CPU    */
-    scroll_top = 0;
-    scroll_bot = SCR_ROWS - 1;
-    cur_attr   = 0;
+    SET80STORE     = 0; /* PAGE2 now banks the text page for the CPU */
+    SET80VID       = 0; /* 80-column video on                        */
+    SETALTCHAR     = 0; /* alternate character set -> real lowercase  */
+    TXTSET         = 0; /* text mode                                 */
+    MIXCLR         = 0; /* full screen (no mixed graphics)           */
+    TXTPAGE1       = 0; /* display page 1 / main bank for the CPU    */
+    scroll_top     = 0;
+    scroll_bot     = SCR_ROWS - 1;
+    cur_attr       = 0;
+    cursor_visible = 1;
+    cursor_shown   = 0;
     scr_clear_all();
 }
 
@@ -328,8 +367,8 @@ void scr_delete_chars(unsigned char n)
 /* ECH: erase n chars from the cursor without shifting the rest of the line. */
 void scr_erase_chars(unsigned char n)
 {
-    unsigned int   end;
-    unsigned char  col;
+    unsigned int  end;
+    unsigned char col;
     if (n == 0) {
         n = 1;
     }
@@ -464,3 +503,54 @@ void scr_restore_screen(void)
 
 unsigned char scr_col(void) { return cur_col; }
 unsigned char scr_row(void) { return cur_row; }
+
+/* --- Visible text cursor overlay -------------------------------------------
+ * Render the cursor by inverting the cell relative to its own attribute, so it
+ * shows over both normal and inverse text and never changes which letter the
+ * cell displays under the conformance/screen fold (a normal high-bit glyph maps
+ * to its inverse display code and vice versa). The mapping matches scr_put's
+ * inverse encoding: an ASCII value >= 0x40 inverts to display code (u & 0x1F),
+ * lower values ($20-$3F: space/digits/symbols) stay put. */
+static unsigned char cursor_glyph(unsigned char b)
+{
+    unsigned char u;
+    if (b >= 0x80) {
+        /* currently normal high-bit ASCII -> paint as inverse */
+        u = (unsigned char)(b & 0x7F);
+        return (u >= 0x40) ? (unsigned char)(u & 0x1F) : u;
+    }
+    /* currently inverse display code -> paint as normal high-bit ASCII */
+    u = (b < 0x20) ? (unsigned char)(b + 0x40) : b; /* recover the ASCII value */
+    return (unsigned char)(u | 0x80);
+}
+
+void scr_cursor_paint(void)
+{
+    if (!cursor_visible || cursor_shown) {
+        return;
+    }
+    cursor_saved = cell_get(cur_col, cur_row);
+    cursor_col   = cur_col;
+    cursor_row   = cur_row;
+    cursor_shown = 1; /* set before writing the inverted cell (probe invariant) */
+    cell_put(cursor_col, cursor_row, cursor_glyph(cursor_saved));
+}
+
+void scr_cursor_erase(void)
+{
+    if (!cursor_shown) {
+        return;
+    }
+    cell_put(cursor_col, cursor_row, cursor_saved); /* restore before clearing */
+    cursor_shown = 0;
+}
+
+/* DECTCEM (ESC[?25h/l): show or hide the cursor. Hiding erases it immediately so
+ * the effect is visible without waiting for the next render. */
+void scr_set_cursor_visible(unsigned char on)
+{
+    cursor_visible = on ? 1 : 0;
+    if (!cursor_visible) {
+        scr_cursor_erase();
+    }
+}

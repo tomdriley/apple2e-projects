@@ -75,7 +75,10 @@ void start(void)
     for (;;) {
         serial_pump(); /* drain the ACIA into the ring buffer */
         if (serial_rx_ready()) {
+            scr_cursor_erase();               /* clear the overlay before rendering */
             vt100_feed((char)serial_getch()); /* parse + render (ESC sequences) */
+        } else {
+            scr_cursor_paint(); /* nothing to render: show the cursor while idle */
         }
         if (KBD & 0x80) { /* a key is waiting */
             c       = KBD & 0x7F;
