@@ -11,7 +11,7 @@ implement is consumed silently so it can never corrupt the screen.
 stateDiagram-v2
     [*] --> NORMAL
     NORMAL --> ESC: 0x1B
-    NORMAL --> NORMAL: printable / CR LF BS TAB BEL
+    NORMAL --> NORMAL: printable / ENQ CR LF BS TAB BEL
     ESC --> CSI: '['
     ESC --> STRING: ']' 'P' '^' '_' (OSC/DCS/PM/APC)
     ESC --> NORMAL: D M E (IND/RI/NEL) or unknown
@@ -22,8 +22,8 @@ stateDiagram-v2
 ```
 
 - **NORMAL** renders printable bytes (`0x20`–`0x7E`) and acts on the C0 controls
-  CR, LF, VT and FF (all three index down one line), BS, HT (tab to the next
-  8-column stop), and BEL (speaker click).
+  ENQ (answerback), CR, LF, VT and FF (all three index down one line), BS, HT
+  (tab to the next 8-column stop), and BEL (speaker click).
 - **ESC** handles the two-byte escapes `ESC D` (IND), `ESC M` (RI), `ESC E`
   (NEL); the string introducers `ESC ]` (OSC), `ESC P` (DCS), `ESC ^` (PM),
   `ESC _` (APC) switch to STRING; any other second byte is ignored.
@@ -41,6 +41,7 @@ to distinguish, e.g., DECSTBM (`ESC[r`) from private resets (`ESC[?..r`), and a
 
 | Byte | Name | Action |
 |------|------|--------|
+| `0x05` | ENQ | Transmit the answerback string `A2VT100` over the host link |
 | `0x07` | BEL | Short speaker click |
 | `0x08` | BS | Cursor left one column (no erase) |
 | `0x09` | HT | Cursor to the next multiple-of-8 column |

@@ -22,6 +22,11 @@
 #define S_STR_ESC 5 /* saw ESC inside a string; a following '\' ends ST */
 #define MAXPARAM  4
 
+/* Answerback message returned for ENQ (0x05). This terminal has no
+ * user-programmable answerback memory, so it uses a short, fixed, printable
+ * identity string (no control bytes). */
+#define ANSWERBACK "A2VT100"
+
 static unsigned char state;
 static unsigned int  param[MAXPARAM];
 static unsigned char nparam; /* index of the parameter currently being built */
@@ -98,6 +103,15 @@ static void report_cursor(void) /* ESC [ row ; col R  (1-based) */
     serial_put(';');
     put_dec((unsigned char)(scr_col() + 1));
     serial_put('R');
+}
+
+static void send_answerback(void) /* ENQ (0x05): emit the fixed answerback */
+{
+    static const char msg[] = ANSWERBACK;
+    unsigned char     i;
+    for (i = 0; msg[i] != '\0'; ++i) {
+        serial_put(msg[i]);
+    }
 }
 
 static void csi_dispatch(unsigned char f)
@@ -393,6 +407,8 @@ void vt100_feed(char ch)
             scr_gotoxy(t, scr_row());
         } else if (c == 0x07) {
             beep();
+        } else if (c == 0x05) {
+            send_answerback(); /* ENQ: return the answerback over the host link */
         } else if (c >= 0x20 && c < 0x7F) {
             scr_put(g0_special ? dec_graphic(c) : (char)c);
         }
