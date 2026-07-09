@@ -1,26 +1,24 @@
 /* Host-side unit test for the 6551 receive ring buffer.
  *
- * The real ring lives in serial.c as file-scope statics wired directly to the
- * 6551's memory-mapped registers, so it cannot be linked and exercised in
- * isolation. This test therefore MIRRORS serial.c's ring FIFO -- the same
- * types, guards and pop/push order -- and runs it on the host through cc65's
- * sim6502 target + the sim65 simulator, so it is compiled by the *real* cc65
- * compiler and gets cc65's exact integer/wraparound semantics (the whole point
- * of the bug). Keep this mirror in sync with serial.c if the ring changes; a
- * follow-up (relevant to future interrupt-driven RX) is to extract the ring into a
- * shared module this test can link directly instead of mirroring.
+ * The RX ring now lives in its own module (../ring.c + ../ring.h), so this test
+ * LINKS the real implementation directly instead of mirroring it -- the buggy
+ * drift risk of a hand-copied duplicate is gone. It is built with cc65's
+ * sim6502 target and run under the sim65 simulator, so the ring is compiled by
+ * the *real* cc65 compiler and gets cc65's exact integer/wraparound semantics
+ * (the whole point of the bug).
  *
- * It exercises two ring variants:
- *   - "fixed"  : the shipped design -- a count-free single-producer/single-
+ * It exercises two rings:
+ *   - "real"   : the shipped ring module -- a count-free single-producer/single-
  *                consumer FIFO. head/tail are unsigned char (free mod-256 wrap)
  *                and one slot is kept as a sentinel, so `head == tail` means
  *                empty and `(head + 1) == tail` means full (255 bytes usable).
  *                No occupancy counter exists to overflow.
- *   - "buggy"  : the original pre-fix logic (an unsigned char occupancy count,
- *                so the `count != RING_SIZE` guard was always true and a full
- *                ring was never detected). Modelled as an unconditional write so
- *                we do not re-introduce the "comparison is always true" warning.
- * Asserting on both proves the scenarios have teeth: the fixed ring must keep
+ *   - "buggy"  : a local model of the original pre-fix logic (an unsigned char
+ *                occupancy count, so the `count != RING_SIZE` guard was always
+ *                true and a full ring was never detected). Modelled as an
+ *                unconditional write so we do not re-introduce the "comparison
+ *                is always true" warning.
+ * Asserting on both proves the scenarios have teeth: the real ring must keep
  * FIFO integrity across an overflow while the buggy ring must corrupt it.
  *
  * main() returns the number of failed checks (0 == success) so `make test`
@@ -28,46 +26,19 @@
  */
 #include <stdio.h>
 
-#define RING_SIZE 256
+#include "../ring.h"
 
-/* ---- Fixed ring: mirrors serial.c's count-free sentinel-slot FIFO ------- */
-static unsigned char f_ring[RING_SIZE];
-static unsigned char f_head, f_tail; /* the only state -- no occupancy counter */
+/* ---- Real ring: thin aliases onto the shipped ring.c module ------------- */
+static void f_reset(void) { ring_reset(); }
 
-static void f_reset(void)
-{
-    f_head = 0;
-    f_tail = 0;
-}
+/* Returns 1 if the byte was accepted, 0 if the ring was full (byte dropped). */
+static unsigned char f_put(unsigned char b) { return ring_push(b); }
 
-/* Returns 1 if the byte was accepted, 0 if the ring was full (byte dropped).
- * Full is `(head + 1) == tail`, so one slot is always left empty as a sentinel
- * and `head == tail` unambiguously means empty. */
-static unsigned char f_put(unsigned char b)
-{
-    unsigned char nh;
-    nh = (unsigned char)(f_head + 1);
-    if (nh != f_tail) {
-        f_ring[f_head] = b;
-        f_head         = nh;
-        return 1;
-    }
-    return 0;
-}
+/* Returns the popped byte, or -1 when empty. */
+static int f_get(void) { return ring_pop(); }
 
-/* Returns the popped byte, or -1 when empty (mirrors serial_getch). */
-static int f_get(void)
-{
-    unsigned char b;
-    if (f_head == f_tail) { /* empty */
-        return -1;
-    }
-    b = f_ring[f_tail++];
-    return (int)b;
-}
-
-/* Mirrors serial_rx_ready: occupancy is the single-byte pointer distance. */
-static unsigned char f_ready(void) { return (unsigned char)(f_head - f_tail); }
+/* Occupancy: the single-byte pointer distance. */
+static unsigned char f_ready(void) { return ring_count(); }
 
 /* ---- Buggy ring: the pre-fix behaviour, for a teeth check --------------- */
 static unsigned char b_ring[RING_SIZE];
