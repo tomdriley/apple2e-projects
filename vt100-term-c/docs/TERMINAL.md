@@ -49,6 +49,8 @@ to distinguish, e.g., DECSTBM (`ESC[r`) from private resets (`ESC[?..r`), and a
 | `0x0B` | VT | Same as LF (cursor down; scroll at the bottom margin) |
 | `0x0C` | FF | Same as LF (cursor down; scroll at the bottom margin) |
 | `0x0D` | CR | Cursor to column 1 |
+| `0x0E` | SO | Locking shift out (LS1): invoke G1 as the active (GL) set |
+| `0x0F` | SI | Locking shift in (LS0): invoke G0 as the active (GL) set |
 
 ## Escape sequences
 
@@ -63,6 +65,7 @@ to distinguish, e.g., DECSTBM (`ESC[r`) from private resets (`ESC[?..r`), and a
 | `ESC E` | NEL | Next line: CR + LF |
 | `ESC c` | RIS | Hard reset: clear, home, default attributes/charset/modes/region |
 | `ESC ( 0` / `ESC ( B` | SCS | Select DEC line-drawing / ASCII for G0 |
+| `ESC ) 0` / `ESC ) B` | SCS | Select DEC line-drawing / ASCII for G1 |
 
 ### CSI — cursor motion
 
@@ -175,11 +178,20 @@ screen, never the cursor.
 
 ## Character sets and line drawing
 
-`ESC ( 0` selects the DEC special-graphics (line-drawing) set for G0; `ESC ( B`
-returns to ASCII. While line drawing is active, the box-drawing codes are mapped
-to the closest ASCII the IIe can show — horizontal `q`→`-`, vertical `x`→`|`, and
-all corners/tees/cross→`+` — because real box glyphs would need MouseText, which
-the non-enhanced apple2e lacks.
+The terminal tracks two graphic sets, G0 and G1, and an active (GL) selector.
+`ESC ( 0` / `ESC ( B` designate DEC special-graphics (line-drawing) or ASCII for
+**G0**; `ESC ) 0` / `ESC ) B` do the same for **G1**. The locking shifts choose
+which designated set GL invokes: SO (`0x0E`, LS1) invokes G1 and SI (`0x0F`, LS0)
+invokes G0. Printable bytes are then rendered through whichever set is currently
+active — so, for example, designating G1 as line-drawing (`ESC ) 0`) and issuing
+SO makes subsequent glyphs draw from the special-graphics set until SI returns to
+G0. GL starts on G0 with both sets at ASCII; RIS, DECSTR, and `vt100_init` reset
+the designations and return GL to G0.
+
+While a special-graphics set is active, the box-drawing codes are mapped to the
+closest ASCII the IIe can show — horizontal `q`→`-`, vertical `x`→`|`, and all
+corners/tees/cross→`+` — because real box glyphs would need MouseText, which the
+non-enhanced apple2e lacks.
 
 ## Keyboard map
 

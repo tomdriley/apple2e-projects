@@ -152,5 +152,23 @@
       ]
     },
     "notes": "After ESC(B, q/x/l/m render as ordinary ASCII letters again."
+  },
+  {
+    "id": "charset-g0-g1-independent-shift",
+    "category": "charset-linedraw",
+    "spec_ref": "VT100-UG: SCS G0/G1, SO/SI locking shift; issues #12, #52",
+    "input": "\\e(0\\e)Bq\\x0eq\\x0fq",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "-q-"
+        ]
+      ]
+    },
+    "notes": "G0 and G1 are designated independently: ESC(0 makes G0 DEC special graphics while ESC)B keeps G1 at ASCII. With GL on G0, q folds to '-'; SO invokes G1 (ASCII) so q renders as 'q'; SI returns to G0 so q folds to '-' again. The row '-q-' fails unless the two designations are tracked separately AND SO/SI switch the active set."
   }
 ]
