@@ -146,6 +146,18 @@
     "notes": "Tertiary DA (ESC[=c) is swallowed silently -- it must not emit a reply on the wire, in particular no spurious primary DA (ESC[?1;0c) or secondary DA (ESC[>1;0;0c). Locks the wire behavior that the screen-only sibling case cannot see."
   },
   {
+    "id": "report-enq-answerback",
+    "category": "reports",
+    "spec_ref": "VT100-UG answerback (ENQ); ECMA-48 ENQ",
+    "input": "\\x05",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "report": "A2VT100"
+    },
+    "notes": "ENQ (0x05) elicits the terminal's answerback message. This terminal has no user-programmable answerback memory, so it returns a short fixed identity string (A2VT100) over the wire. Discriminating: if ENQ is dropped again the wire carries only the harness readiness CPR, which strips to empty and fails this exact match. Marked profile because the answerback content is a documented local default, not spec-mandated."
+  },
+  {
     "id": "report-decrqm-decckm-reset",
     "category": "reports",
     "spec_ref": "VT220-RM DECRQM/DECRPM",
