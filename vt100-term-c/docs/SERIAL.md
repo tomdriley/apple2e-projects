@@ -74,6 +74,12 @@ flowchart LR
   host ignored XOFF; the excess is dropped cleanly instead of corrupting the
   buffer.
 
+The ring FIFO itself (push/pop/occupancy/full/empty over `r_head`/`r_tail`) lives
+in its own module, [`ring.c`](../ring.c) / [`ring.h`](../ring.h); `serial.c`
+layers the 6551 register access and XON/XOFF flow control on top. Keeping the
+ring standalone lets the host unit test link the real code and gives the planned
+interrupt-driven RX path a clean seam.
+
 ## Overrun: the recurring theme
 
 The 6551 buffers exactly one received byte. At 9600 baud that byte must be

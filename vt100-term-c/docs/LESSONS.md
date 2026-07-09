@@ -133,12 +133,12 @@ not do. The full/empty logic is therefore covered instead by (1) the cc65 warnin
 disappearance (the old always-true comparison is gone), (2) the existing ROM-backed
 MAME conformance gate (proves the ring rework didn't regress normal receive), and
 (3) a ROM-free host unit test (`make test`, see [docs/TESTING.md](TESTING.md)) that
-drives a mirror of the ring past capacity directly and asserts FIFO integrity —
-including full detection via `(head + 1) == tail` — with no lost or overwritten
-bytes. Accepting the absent corpus test is a deliberate, recorded deviation, not an
-oversight. A natural follow-up is to extract the ring into a shared module the unit
-test can link directly (rather than mirror), which also matters for the
-interrupt-driven RX path.
+drives the ring past capacity directly and asserts FIFO integrity — including full
+detection via `(head + 1) == tail` — with no lost or overwritten bytes. Accepting
+the absent corpus test is a deliberate, recorded deviation, not an oversight. The
+ring now lives in its own module (`ring.{c,h}`) that the unit test **links
+directly** rather than mirrors, so the test can never drift from shipped behavior;
+that shared seam also matters for the interrupt-driven RX path.
 
 ## Memory-mapped I/O must be `volatile`
 

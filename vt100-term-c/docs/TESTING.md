@@ -15,11 +15,13 @@ logic that a boot test cannot observe:
 The ring unit test exists because the RX ring-full bug is a
 buffer-overflow/type defect that a conformance corpus case cannot reliably
 observe — flow control (XON/XOFF) normally keeps the ring from ever filling. It
-mirrors the count-free, sentinel-slot ring FIFO from `serial.c`, drives it past its
-255-byte capacity, and asserts that full is detected (`(head + 1) == tail`) with no
-bytes lost or overwritten; it also runs the original counter-based logic to prove
-the checks have teeth. Keep the mirror in sync with `serial.c` (a follow-up is to
-extract the ring into a shared module the test can link directly).
+**links the real ring module** (`ring.c`, shared with `serial.c`) rather than a
+hand-copied mirror, drives the count-free, sentinel-slot FIFO past its 255-byte
+capacity, and asserts that full is detected (`(head + 1) == tail`) with no bytes
+lost or overwritten; it also runs a local model of the original counter-based
+logic to prove the checks have teeth. Because the test and the firmware compile
+the same `ring.c`, the ring can no longer drift out of sync with shipped
+behavior.
 
 ## Continuous integration & reproducible toolchain
 
@@ -411,13 +413,14 @@ and checks every corpus file), then grade it with
 `python client/conformance/runner.py --target mame -k <your-id>`.
 
 **A firmware logic unit** (something a boot test cannot observe — e.g. a ring or
-counter overflow that flow control normally prevents) → add a self-contained C
-file under `tests/` that mirrors the logic, compile it for cc65's `sim6502`
-target, and run it under `sim65`, returning the failing-check count from `main()`
-so the build fails on a regression. Wire it into the `test` target in the
-[`Makefile`](../Makefile) and run it with `make test`; the `hermetic-checks` CI
-job already invokes it. `tests/ring_test.c` (the RX-ring test) is the
-model to copy — include both the fixed and the pre-fix logic so the assertions
-provably distinguish them.
+counter overflow that flow control normally prevents) → put the logic in its own
+module the test can **link directly** (as `ring.{c,h}` does), or, if that is not
+practical, a self-contained C file under `tests/` that models it; compile it for
+cc65's `sim6502` target and run it under `sim65`, returning the failing-check
+count from `main()` so the build fails on a regression. Wire it into the `test`
+target in the [`Makefile`](../Makefile) and run it with `make test`; the
+`hermetic-checks` CI job already invokes it. `tests/ring_test.c` (the RX-ring
+test) is the model to copy — it links the real `ring.c` and adds a local model of
+the pre-fix logic so the assertions provably distinguish them.
 
 See [docs/HACKING.md](HACKING.md) for implementing the feature the test drives.

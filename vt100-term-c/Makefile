@@ -120,18 +120,26 @@ clean:
 
 # --- Host-side unit tests (ROM-free) ---------------------------------------
 # Compile the ring-buffer unit test with cc65's sim6502 target and run it on
-# the host through the sim65 simulator. This exercises the RX ring FIFO logic
-# with the real cc65 compiler's integer/wraparound semantics, with
-# no ROMs, MAME or serial socket needed -- so it runs in the hermetic CI job.
-# main() returns the failing-check count, so a regression fails the build.
+# the host through the sim65 simulator. The test LINKS the real ring module
+# (ring.c), so it exercises the shipped RX ring FIFO with the real cc65
+# compiler's integer/wraparound semantics -- no ROMs, MAME or serial socket
+# needed, so it runs in the hermetic CI job. The ring is compiled here to a
+# separate sim6502 object (ring_sim.o) so it never clobbers the firmware's
+# `-t none` build/ring.o. main() returns the failing-check count, so a
+# regression fails the build.
 TESTDIR   := tests
 TESTPRG   := $(BUILDDIR)/ring_test.prg
+RINGSIMOBJ := $(BUILDDIR)/ring_sim.o
 SIM6502LIB ?= sim6502.lib
 
-$(TESTPRG): $(TESTDIR)/ring_test.c | $(BUILDDIR)
+$(RINGSIMOBJ): ring.c ring.h | $(BUILDDIR)
+	"$(CC65)" -O -t sim6502 -o $(BUILDDIR)/ring_sim.s ring.c
+	"$(CA65)" -t sim6502 -o $(RINGSIMOBJ) $(BUILDDIR)/ring_sim.s
+
+$(TESTPRG): $(TESTDIR)/ring_test.c ring.h $(RINGSIMOBJ) | $(BUILDDIR)
 	"$(CC65)" -O -t sim6502 -o $(BUILDDIR)/ring_test.s $(TESTDIR)/ring_test.c
 	"$(CA65)" -t sim6502 -o $(BUILDDIR)/ring_test.o $(BUILDDIR)/ring_test.s
-	"$(LD65)" -t sim6502 -o $(TESTPRG) $(BUILDDIR)/ring_test.o "$(SIM6502LIB)"
+	"$(LD65)" -t sim6502 -o $(TESTPRG) $(BUILDDIR)/ring_test.o $(RINGSIMOBJ) "$(SIM6502LIB)"
 
 test: $(TESTPRG)
 	"$(SIM65)" $(TESTPRG)
