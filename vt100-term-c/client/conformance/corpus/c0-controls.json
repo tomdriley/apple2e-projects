@@ -215,47 +215,47 @@
     "notes": "FF acts as LF: the cursor moves down one row with the column preserved (LNM off, so no CR)."
   },
   {
-    "id": "c0-so-ignored",
+    "id": "c0-so-invokes-g1",
     "category": "c0-controls",
-    "spec_ref": "ECMA-48 §8.3 SO; VT100-UG",
-    "input": "\\e[2J\\e[5;10HSO\\x0e",
+    "spec_ref": "ECMA-48 §8.3 SO (LS1); VT100-UG SO/SI",
+    "input": "\\e[2J\\e[1;1H\\e)0\\x0eqx",
     "status": "supported",
-    "basis": "tolerance",
+    "basis": "profile",
     "expect": {
       "rows": [
         [
-          5,
-          10,
-          "SO"
+          1,
+          1,
+          "-|"
         ]
       ],
       "cursor": [
-        5,
-        12
+        1,
+        3
       ]
     },
-    "notes": "With G1 left at ASCII (the default) SO invoking G1 shows identical glyphs, so ignoring SO renders exactly what the spec requires for this input."
+    "notes": "ESC)0 designates G1 as DEC special graphics; SO (LS1) invokes G1 as the active set, so q/x render as the IIe line-draw fold -/|. If SO were ignored, G0 (ASCII) would stay active and the row would read 'qx', so this case fails unless the locking shift takes effect. basis=profile because the asserted glyphs are the documented Apple IIe ASCII fold of DEC line drawing."
   },
   {
-    "id": "c0-si-ignored",
+    "id": "c0-si-invokes-g0",
     "category": "c0-controls",
-    "spec_ref": "ECMA-48 §8.3 SI; VT100-UG",
-    "input": "\\e[2J\\e[5;10HSI\\x0f",
+    "spec_ref": "ECMA-48 §8.3 SI (LS0); VT100-UG SO/SI",
+    "input": "\\e[2J\\e[1;1H\\e)0\\x0eq\\x0fq",
     "status": "supported",
-    "basis": "tolerance",
+    "basis": "profile",
     "expect": {
       "rows": [
         [
-          5,
-          10,
-          "SI"
+          1,
+          1,
+          "-q"
         ]
       ],
       "cursor": [
-        5,
-        12
+        1,
+        3
       ]
     },
-    "notes": "With G0 already the active set, SI invoking G0 shows identical glyphs, so ignoring SI renders exactly what the spec requires for this input."
+    "notes": "ESC)0 designates G1 as DEC special graphics; SO invokes G1 (q folds to '-'), then SI (LS0) returns GL to G0 so the next q renders as ASCII 'q'. If SI were ignored, G1 would stay active and the row would read '--'; if SO were also ignored it would read 'qq'. The expected '-q' therefore fails unless SO and SI both switch the active set. basis=profile because the '-' is the IIe fold of DEC line drawing."
   }
 ]

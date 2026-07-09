@@ -39,6 +39,8 @@ unsigned char        app_cursor;   /* DECCKM: application cursor keys enabled */
 unsigned char        attr_inverse; /* SGR 7: inverse video currently selected */
 static unsigned char charset_g0;   /* the charset select (ESC(x) targets G0 */
 static unsigned char g0_special;   /* G0 is DEC special graphics (line drawing) */
+static unsigned char g1_special;   /* G1 is DEC special graphics (line drawing) */
+static unsigned char active_g1;    /* GL invokes G1 (locking shift out, SO/LS1) */
 static unsigned char saved_col, saved_row;
 
 void vt100_init(void)
@@ -49,6 +51,8 @@ void vt100_init(void)
     app_cursor   = 0;
     attr_inverse = 0;
     g0_special   = 0;
+    g1_special   = 0;
+    active_g1    = 0;
 }
 
 static void reset_params(void)
@@ -128,6 +132,8 @@ static void csi_dispatch(unsigned char f)
             app_cursor   = 0;
             attr_inverse = 0;
             g0_special   = 0;
+            g1_special   = 0;
+            active_g1    = 0;
             scr_set_attr(0);
             scr_set_cursor_visible(1);
             scr_set_region(0, SCR_ROWS - 1);
@@ -422,8 +428,13 @@ void vt100_feed(char ch)
             beep();
         } else if (c == 0x05) {
             send_answerback(); /* ENQ: return the answerback over the host link */
+        } else if (c == 0x0E) {
+            active_g1 = 1; /* SO / LS1: invoke G1 into GL (locking shift out) */
+        } else if (c == 0x0F) {
+            active_g1 = 0; /* SI / LS0: invoke G0 into GL (locking shift in) */
         } else if (c >= 0x20 && c < 0x7F) {
-            scr_put(g0_special ? dec_graphic(c) : (char)c);
+            scr_put((active_g1 ? g1_special : g0_special) ? dec_graphic(c)
+                                                          : (char)c);
         }
         break;
 
@@ -455,6 +466,8 @@ void vt100_feed(char ch)
                 app_cursor   = 0;
                 attr_inverse = 0;
                 g0_special   = 0;
+                g1_special   = 0;
+                active_g1    = 0;
                 saved_col    = 0;
                 saved_row    = 0;
                 scr_set_attr(0);
@@ -475,6 +488,12 @@ void vt100_feed(char ch)
                 g0_special = 1;
             } else if (c == 'B') {
                 g0_special = 0;
+            }
+        } else {
+            if (c == '0') {
+                g1_special = 1;
+            } else if (c == 'B') {
+                g1_special = 0;
             }
         }
         state = S_NORMAL;
