@@ -269,6 +269,9 @@ static void csi_dispatch(unsigned char f)
             case 1: /* DECCKM: application cursor keys */
                 app_cursor = on;
                 break;
+            case 25: /* DECTCEM: show (h) / hide (l) the visible text cursor */
+                scr_set_cursor_visible(on);
+                break;
             case 47: /* alternate screen buffer */
             case 1047:
             case 1049:
@@ -352,6 +355,7 @@ static void csi_dispatch(unsigned char f)
         attr_inverse = 0;
         g0_special   = 0;
         scr_set_attr(0);
+        scr_set_cursor_visible(1);
         scr_set_region(0, SCR_ROWS - 1);
         break;
     default: /* colors/bold and any unrecognized final byte: ignore */
@@ -445,6 +449,7 @@ void vt100_feed(char ch)
                 saved_col    = 0;
                 saved_row    = 0;
                 scr_set_attr(0);
+                scr_set_cursor_visible(1);
                 scr_set_region(0, SCR_ROWS - 1);
                 scr_clear_all();
                 break;

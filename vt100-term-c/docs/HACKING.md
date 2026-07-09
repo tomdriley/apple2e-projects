@@ -44,6 +44,21 @@ bank-switching loops that use `cell_put()` must pump after every cell. When you
 shift cells within a row, read the source glyphs from the video page with
 `read_row_glyphs(row, buf)` into a local buffer, then shift.
 
+## The visible cursor is an overlay — keep it off-screen during work
+
+The text cursor ([screen80.c](../screen80.c): `scr_cursor_paint` /
+`scr_cursor_erase`) is painted by inverting one cell and is only ever on the
+screen while the terminal loop is idle. [term.c](../term.c) calls
+`scr_cursor_erase()` before feeding any received byte to the parser and
+`scr_cursor_paint()` only when the receive ring is empty. **Every `scr_*`
+operation therefore runs on a screen with no cursor painted**, so it must not try
+to preserve or special-case the cursor cell — the loop guarantees the stored
+glyph is the real one. If you add a code path that renders bytes outside the main
+loop, erase the cursor first (an inline draw/erase between bytes is exactly what
+corrupted the first attempt). `cursor_visible` (DECTCEM), `cursor_shown`, and the
+saved-glyph state are non-static so the conformance probe can verify visibility
+and strip the overlay from its read-back.
+
 ## cc65 conventions that matter
 
 - **Memory-mapped I/O must be `volatile`.** The 6551 pointer is

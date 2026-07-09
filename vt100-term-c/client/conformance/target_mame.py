@@ -52,10 +52,13 @@ SYMS_OUT = BUILD / "conf_syms.txt"
 # Firmware state variables to expose to the probe (assembly names carry a
 # leading underscore; the probe/corpus use the bare C name). saved_screen_* and
 # cur_attr are handed over too though no case needs them yet -- they cost
-# nothing and round out the state channel.
+# nothing and round out the state channel. The cursor_* group backs DECTCEM
+# verification (issue #27) and lets _read_probe strip the visible-cursor overlay
+# so the glyph/inverse planes always reflect the logical screen.
 STATE_SYMS = (
     "cur_col", "cur_row", "scroll_top", "scroll_bot", "cur_attr",
     "app_cursor", "attr_inverse", "saved_screen_col", "saved_screen_row",
+    "cursor_visible", "cursor_shown", "cursor_col", "cursor_row", "cursor_saved",
 )
 # VICE label line, e.g.  al 001EDE ._cur_col
 _LBL_RE = re.compile(r"^al\s+([0-9A-Fa-f]+)\s+\._(\w+)\s*$")
@@ -341,7 +344,46 @@ class MameTarget(Target):
                     state[parts[0]] = int(parts[1])
                 except ValueError:
                     pass
+        self._strip_cursor(text, inverse, state)
         return seq, text[:ROWS], inverse[:ROWS], state
+
+    @staticmethod
+    def _fold_ascii(raw: int) -> int:
+        """Fold a raw video byte to printable ASCII, mirroring the Lua probe's
+        to_ascii so a reconstructed cell matches the rest of the glyph plane."""
+        if raw >= 0x80:
+            b = raw & 0x7F           # normal high-bit ASCII
+        elif raw < 0x20:
+            b = raw + 0x40           # inverse @A-Z ($00-$1F)
+        else:
+            b = raw                  # inverse space/digit/symbol ($20-$3F)
+        return 0x20 if (b < 0x20 or b == 0x7F) else b
+
+    @classmethod
+    def _strip_cursor(cls, text: list, inverse: list, state: dict) -> None:
+        """Remove the visible-cursor overlay from the glyph and inverse planes.
+
+        The firmware paints the cursor by inverting one cell; when ``cursor_shown``
+        is set it saved the true byte under that cell in ``cursor_saved``. Restore
+        both planes at (``cursor_row``, ``cursor_col``) from that saved byte so the
+        probe always reports the *logical* screen -- otherwise a cursor resting on
+        a checked cell (e.g. a lowercase letter, which inverts to inverse-uppercase
+        on the IIe) would perturb an unrelated glyph/attr expectation. Modifies
+        ``text``/``inverse`` in place."""
+        if not state.get("cursor_shown"):
+            return
+        row = state.get("cursor_row")
+        col = state.get("cursor_col")
+        saved = state.get("cursor_saved")
+        if row is None or col is None or saved is None:
+            return
+        if not (0 <= row < len(text) and 0 <= col < COLS):
+            return
+        ch = chr(cls._fold_ascii(saved))
+        text[row] = text[row][:col] + ch + text[row][col + 1:]
+        if 0 <= row < len(inverse):
+            bit = "1" if saved < 0x80 else "0"
+            inverse[row] = inverse[row][:col] + bit + inverse[row][col + 1:]
 
     @staticmethod
     def _pad(row: str, fill: str = " ") -> str:

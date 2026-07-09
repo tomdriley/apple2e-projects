@@ -34,4 +34,12 @@ void          scr_set_attr(unsigned char inverse);                  /* SGR: inve
 unsigned char scr_col(void);                                        /* current column (0-based)       */
 unsigned char scr_row(void);                                        /* current row (0-based)          */
 
+/* Visible text cursor. The cursor is an overlay the terminal loop drives: it is
+ * painted only while the input is idle and erased before any received byte is
+ * rendered, so no screen operation ever runs against a screen that still has the
+ * cursor painted on it. */
+void scr_set_cursor_visible(unsigned char on); /* DECTCEM ?25: show/hide the cursor */
+void scr_cursor_paint(void);                   /* paint the cursor at the current cell (if visible) */
+void scr_cursor_erase(void);                   /* restore the true glyph under the cursor           */
+
 #endif /* SCREEN_H */

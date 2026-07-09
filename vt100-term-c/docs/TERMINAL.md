@@ -105,6 +105,7 @@ operate within the cursor's row.
 | `ESC [ > c` | Secondary DA | Sends `ESC [ > 1 ; 0 ; 0 c` (VT220-family, version 0) |
 | `ESC [ = c` | Tertiary DA | Consumed cleanly; no reply (the DCS-form report is not implemented) |
 | `ESC [ ? 1 h` / `l` | DECCKM | Enable / disable application cursor keys |
+| `ESC [ ? 25 h` / `l` | DECTCEM | Show / hide the visible text cursor (see below) |
 | `ESC [ ? 47/1047/1049 h` / `l` | Alt screen | Switch to / from the alternate screen buffer (save + restore); the active SGR attribute is reset to normal on both enter and exit |
 | `ESC [ ! p` | DECSTR | Soft reset: attributes, charset, modes, region (no clear) |
 | `ESC [ Ps m` | SGR | `7` = inverse video on, `0`/`27` = off; colors, bold, and 256/truecolor (`38;5;Ps` / `38;2;R;G;B`, and the `48;…` background forms) are consumed |
@@ -147,6 +148,30 @@ littering the screen with escape residue. Private mode sets/resets other than
 the ones listed above are likewise absorbed. OSC/DCS/PM/APC strings are swallowed
 whole (until ST or BEL), so window-title, DECRQSS, and sixel-style payloads never
 appear on screen.
+
+## Visible text cursor
+
+The terminal draws a cursor so a human can see where the next keystroke or edit
+will land. It is an **overlay**, not a stored glyph: the main loop
+([term.c](../term.c)) paints it only while the receive ring is empty and erases
+it before rendering any received byte, so no screen operation (scroll, erase,
+insert, alternate-screen save) ever runs against a screen that still has the
+cursor on it — the stored video glyph can never desync. An earlier attempt that
+toggled the cursor inline between bytes corrupted rendering; this design avoids
+that by keeping the cursor strictly off the screen whenever the parser is doing
+anything.
+
+The cursor is rendered by **inverting the cell relative to its own attribute**
+(normal text under the cursor shows inverse, inverse text shows normal), so it is
+visible over both and never changes which letter the cell displays. It is a
+steady (non-blinking) cursor.
+
+`ESC [ ? 25 l` (DECTCEM reset) hides it and `ESC [ ? 25 h` (set) shows it again;
+`RIS` and `DECSTR` restore it to visible. The show/hide state lives in a firmware
+global (`cursor_visible`) that the conformance state probe reads to verify
+DECTCEM. The conformance and screen probes strip the overlay from the video-RAM
+read-back (using `cursor_shown` / `cursor_saved`) so tests always see the logical
+screen, never the cursor.
 
 ## Character sets and line drawing
 
