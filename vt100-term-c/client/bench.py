@@ -207,6 +207,7 @@ class Terminal:
         self._lock = threading.Lock()
         self._paused = threading.Event()
         self._stop = threading.Event()
+        self._disconnected = threading.Event()
         self._t = threading.Thread(target=self._drain, daemon=True)
         self._t.start()
 
@@ -214,12 +215,15 @@ class Terminal:
         while not self._stop.is_set():
             try:
                 d = self.conn.recv(4096)
-            except (BlockingIOError, OSError):
+            except BlockingIOError:
                 time.sleep(0.002)
                 continue
+            except OSError:
+                self._disconnected.set()
+                return
             if not d:
-                time.sleep(0.002)
-                continue
+                self._disconnected.set()
+                return
             for b in d:
                 if b == XOFF:
                     self._paused.set()
@@ -228,18 +232,26 @@ class Terminal:
             with self._lock:
                 self._buf.extend(d)
 
+    def _raise_if_closed(self):
+        if self._stop.is_set():
+            raise RuntimeError("terminal is closed")
+        if self._disconnected.is_set():
+            raise ConnectionAbortedError("terminal connection closed")
+
     def send(self, data, chunk=16):
         data = bytes(data)
         i = 0
         while i < len(data):
             while self._paused.is_set():
+                self._raise_if_closed()
                 time.sleep(0.001)
             part = data[i:i + chunk]
             j = 0
             while j < len(part):
+                self._raise_if_closed()
                 try:
                     j += self.conn.send(part[j:])
-                except (BlockingIOError, OSError):
+                except BlockingIOError:
                     time.sleep(0.001)
             i += chunk
 

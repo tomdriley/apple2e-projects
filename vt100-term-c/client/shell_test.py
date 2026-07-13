@@ -118,7 +118,7 @@ SHELL_TESTS = [
 ]
 
 
-def launch_mame():
+def launch_mame(stdout=None, stderr=None):
     # Run at real speed (no -nothrottle): with -nothrottle MAME races through the
     # emulated seconds of -str in a fraction of the wall-clock time and would
     # quit in the middle of the suite. -str is a safety cap; we terminate MAME
@@ -129,8 +129,11 @@ def launch_mame():
            "-flop1", DISK, "-video", "none", "-sound", "none",
            "-skip_gameinfo", "-str", "600",
            "-autoboot_script", WATCH_LUA]
-    return subprocess.Popen(cmd, cwd=str(ROOT),
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if stdout is None:
+        stdout = subprocess.DEVNULL
+    if stderr is None:
+        stderr = subprocess.DEVNULL
+    return subprocess.Popen(cmd, cwd=str(ROOT), stdout=stdout, stderr=stderr)
 
 
 def wait_ready(conn, timeout=40.0):
