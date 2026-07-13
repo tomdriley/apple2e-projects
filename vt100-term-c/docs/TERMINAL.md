@@ -188,6 +188,15 @@ SO makes subsequent glyphs draw from the special-graphics set until SI returns t
 G0. GL starts on G0 with both sets at ASCII; RIS, DECSTR, and `vt100_init` reset
 the designations and return GL to G0.
 
+Because SO and SI are C0 controls, they take effect wherever they appear in a
+non-string sequence, not just between complete sequences. An SO or SI embedded
+mid-CSI or between `ESC (` / `ESC )` and its charset designator invokes the shift
+immediately without aborting the pending sequence, which still completes normally
+(for example, `ESC [ 2` SO `J q` performs the SO, finishes the erase, and renders
+`q` through the newly active set). Inside an OSC/DCS/PM/APC string the two bytes
+are swallowed as payload like any other, so a locking shift never fires from
+within a control string.
+
 While a special-graphics set is active, the box-drawing codes are mapped to the
 closest ASCII the IIe can show — horizontal `q`→`-`, vertical `x`→`|`, and all
 corners/tees/cross→`+` — because real box glyphs would need MouseText, which the
