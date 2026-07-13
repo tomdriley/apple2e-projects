@@ -14,7 +14,7 @@ The 6551's four registers sit at `$C088 + slot*16`:
 |--------|----------|-------|
 | `+0` | Data | Read = received byte; write = transmit byte |
 | `+1` | Status | RDRF (`0x08`) = receive full; TDRE (`0x10`) = transmit empty; write = reset |
-| `+2` | Command | `0x09` = RX IRQ on/TX IRQ off; `0x05` = RX + TX IRQs on; no parity/echo, DTR + RTS asserted |
+| `+2` | Command | `0x09` = RX IRQ on/TX IRQ off; `0x05` = RX + TX IRQs on; `0x0A` = teardown with DTR deasserted |
 | `+3` | Control | `0x1E` = 9600 baud, 8 data bits, 1 stop bit |
 
 The register pointer is declared **`volatile`** — these are memory-mapped I/O
@@ -60,18 +60,21 @@ flowchart LR
     ON --> TX
 ```
 
-The 6551 has one IRQ output for both directions. The handler reads status once,
-services RDRF first, then TDRE:
+The 6551 has one IRQ output for both directions. The handler services RDRF
+before an enabled TDRE source and re-samples status after service so a source
+that became pending during the first pass is not stranded:
 
 - **RX:** `serial_isr.s` reads the one-byte hardware register immediately and
   publishes the byte to the receive FIFO. `ring.c` owns the 256-byte array and
   its pointer operations; `r_head` is written only by the ISR and `r_tail` only
   by the main loop. One sentinel slot distinguishes full from empty, so capacity
   is 255 bytes and occupancy is `(unsigned char)(r_head - r_tail)`.
-- **TX:** `serial_put()` appends to a second 256-byte FIFO and enables the TX
-  interrupt. The ISR writes one queued byte whenever TDRE is set. When the queue
-  empties it writes command `0x09` to disable TX IRQ while leaving RX IRQ on;
-  otherwise TDRE would assert continuously.
+- **TX:** `serial_put()` appends one byte to a second 256-byte FIFO.
+  `serial_write()` publishes a complete short protocol reply before arming an
+  idle transmitter. `tx_irq_active` is explicit state: the first enqueue writes
+  command `0x05` once, later enqueues do not rewrite it, and the first empty
+  TDRE writes `0x09` once. Otherwise TDRE would assert continuously, and
+  redundant command writes needlessly restart MAME's emulated divider.
 - **Full rings:** RX drains the ACIA and drops the newest byte if the host has
   ignored XOFF long enough to fill all 255 slots. TX waits only when its 255
   slots are occupied, re-enabling interrupts between retries so the ISR can
@@ -83,6 +86,17 @@ TX has one extra wrinkle: the ISR can inject urgent XOFF at the *front* while
 main appends at the back. `serial_put()` therefore masks IRQs for the short
 capacity-check/store/head-publish sequence. This prevents both sides claiming
 the final sentinel-adjacent slot and collapsing a full queue into `head == tail`.
+
+### Why TX uses a patched absolute store
+
+Do not replace the ISR's patched `STA $ffff` with `STA (aciap),Y`. A 6502
+indexed-indirect store performs a dummy read before the write. At ACIA DATA that
+read is destructive: if RX completes after the status sample, the dummy read
+clears RDRF and consumes the byte without publishing it to the ring. The install
+routine patches the absolute operand to the detected SSC slot, so TX performs
+only the intended write bus cycle. The DA-followed-by-private-CSI regression and
+the stress harness's exact RX publication trace guard this instruction-level
+requirement.
 
 ## XON/XOFF priority
 
@@ -121,17 +135,35 @@ software ring, but rendering or reply generation can no longer overrun the
 ## IRQ and PAGE2 contract
 
 The Apple IIe ROM IRQ path saves A at `$45` and jumps through the user vector at
-`$03FE`. `serial_isr_install()` publishes the slot-detected ACIA pointer, installs
-that vector, writes command `0x09`, and enables CPU interrupts. The pure-assembly
-handler saves/restores X and Y, restores A from `$45`, calls no C, and returns
-with `RTI`.
+`$03FE`. `serial_isr_install()` saves the predecessor, publishes the
+slot-detected ACIA pointer, installs the new vector, writes command `0x09`, and
+enables CPU interrupts. The pure-assembly handler saves/restores P, X, and Y,
+restores A from `$45`, calls no C, and returns with `RTI`. If an IRQ has no ACIA
+source, it restores the entry contract and chains to the saved vector.
 
 Calling C from the ISR is forbidden: the build uses cc65 `-Cl`, whose static
-locals and runtime zero-page temporaries are not reentrant. The ISR owns three
-zero-page bytes (`aciap` and `sr_tmp`) and touches only the ACIA plus ring storage.
+locals and runtime zero-page temporaries are not reentrant. The ISR owns four
+zero-page bytes (`aciap`, `sr_tmp`, and `irq_owned`) and touches only the ACIA
+plus ring storage.
 The rings are in BSS above `$0800`, outside the `$0400-$07FF` text window, so the
 handler neither reads nor changes `PAGE2`. If it interrupts `cell_put()` while
 AUX is selected, the render resumes with the same bank selected.
+
+If `start()` returns, crt0 calls `serial_isr_remove()` before the DOS warm start.
+Teardown masks CPU IRQs, deasserts DTR with command `0x0A`, reads status to clear
+any already-latched modem IRQ, restores the predecessor vector, and then enables
+CPU IRQs. Interactive Ctrl-Reset does not use this normal `_exit` path; a
+SOFTEV/PWREDUP reset hook is intentionally deferred.
+
+## Race-stress coverage
+
+`client/serial_irq_stress.py` boots fresh firmware for exact DA, back-to-back
+CPR, shell-wrap, flow-control, and mixed-duplex trials. Its Lua taps derive RAM
+addresses from `build/vt100.lbl` and verify the exact bytes published to the RX
+ring, wire replies, command transitions, ring drain, ACIA error bits, IRQLOC,
+XON/XOFF pairs, and PAGE2 during each RX publication. The mixed mode also
+injects keyboard bytes while DA, CPR, ENQ, rendering, and repeated flow-control
+crossings are active.
 
 ## The retired receive-overrun class
 
@@ -183,5 +215,8 @@ terminal's slot auto-detection reads this firmware's signature.
 
 On a physical IIe the same firmware runs unchanged. Wire a USB/RS-232 adapter to
 the Super Serial Card, set **SW2:6 (Interrupts) On**, and use the `serial`
-transport in the Python clients, which auto-detect the port and baud. See
+transport in the Python clients, which auto-detects the port and baud. See
 [docs/BRIDGE.md](BRIDGE.md).
+
+The interrupt path is currently accepted against ROM-backed MAME. Physical
+hardware validation and baud rates above 9600 remain follow-up work.

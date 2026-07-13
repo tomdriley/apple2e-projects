@@ -1,7 +1,7 @@
 # Testing
 
 Every feature is verified by booting the terminal in **headless MAME** and
-checking the result over the serial socket. There are three MAME harnesses, all
+checking the result over the serial socket. There are four MAME harnesses, all
 CI-friendly (non-zero exit on failure), plus a ROM-free host-side unit test for
 logic that a boot test cannot observe:
 
@@ -10,6 +10,7 @@ logic that a boot test cannot observe:
 | `client/vt100_test.py` | Cursor motion, keyboard | The terminal's own position reports and transmitted bytes |
 | `client/shell_test.py` | Rendered screen from real shell output | A snapshot of the 80×24 screen |
 | `client/conformance/runner.py` | Spec conformance across the VT100/ECMA-48 feature space | A spec-derived corpus graded by video-RAM, state-variable, and wire probes |
+| `client/serial_irq_stress.py` | RX/TX races, flow control, IRQLOC, and PAGE2 | Fresh boots plus ACIA, ring, command, vector, and exact-publication Lua taps |
 | `tests/ring_test.c` (`make test`) | RX overflow integrity and TX/XOFF ring interleavings | Compiled with cc65's `sim6502` target and run on the host under `sim65` — no ROMs, MAME, or serial socket |
 
 The unit test links the real count-free RX implementation in `ring.c`, drives it
@@ -19,12 +20,39 @@ ISR cannot run under sim65, the TX section models the exact enqueue, consume,
 and XOFF front-push operations. It covers both legal near-full interleavings and
 demonstrates why an unmasked enqueue can collapse the sentinel.
 
+## Interrupt-driven serial stress
+
+Use a port that is not occupied by another MAME process:
+
+```sh
+MAME_PORT=6571 python client/serial_irq_stress.py da --runs 20
+MAME_PORT=6571 python client/serial_irq_stress.py cpr --runs 20
+MAME_PORT=6571 python client/serial_irq_stress.py wrap --runs 20
+MAME_PORT=6571 python client/serial_irq_stress.py flow --runs 5
+MAME_PORT=6571 python client/serial_irq_stress.py mixed --runs 5
+```
+
+`da` sends the exact DA-following-private-CSI reproducer, `cpr` sends two
+back-to-back cursor reports, and `wrap` drives the real WSL/ConPTY shell path.
+`flow` enables MAME null-modem XON/XOFF and forces repeated high/low-water
+crossings during slow clears. `mixed` adds DA, CPR, ENQ, ordinary rendering, and
+probe-injected keyboard TX to that flow-controlled stream.
+
+The diagnostic probe reads linker-derived ring/state addresses and records every
+RX-ring write, ACIA status/data/command access, vector update, and PAGE2 state at
+publication. A trial fails on any byte mismatch, unexpected command transition,
+ACIA error, unpaired XOFF/XON, non-drained ring, inactive IRQ vector, screen or
+wire mismatch, or missing AUX-selected IRQ overlap. These tests require the same
+Apple IIe and SSC ROMs as the conformance runner.
+
 ## Continuous integration & reproducible toolchain
 
-Every harness above runs in **GitHub Actions** on each push and pull request, and
-the *same* toolchain powers local containers, Codespaces, and the Copilot cloud
-agent — so **dev == CI == agent**. One pinned, idempotent installer is the single
-source of truth:
+GitHub Actions runs the portable checks and the full conformance corpus on each
+push and pull request. The cursor, shell, and repeated serial stress harnesses
+are maintained acceptance tests run for the changes they target; they are not
+separate CI jobs. The *same* toolchain powers local containers, Codespaces, and
+the Copilot cloud agent — so **dev == CI == agent**. One pinned, idempotent
+installer is the single source of truth:
 
 - [`scripts/setup-toolchain.sh`](../../scripts/setup-toolchain.sh) installs the
   **pinned** cc65 (built from source at commit `cc3c40c54`), MAME, a JRE +

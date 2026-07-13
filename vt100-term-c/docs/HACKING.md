@@ -14,8 +14,9 @@ Most sequences are a few lines in the CSI dispatcher.
 2. **Dispatch it** in `csi_dispatch()` in [vt100.c](../vt100.c). Read parameters
    with `getp(n)` (returns 0 if absent; apply the sequence's default). The
    `priv` flag is set when the CSI had a `?`.
-3. **Answer queries** (if it's a report) by calling `serial_put()`. Replies are
-   queued in the TX ring while the assembly ISR independently keeps RX drained.
+3. **Answer queries** (if it's a report) by building the whole reply and calling
+   `serial_write()`. It publishes a complete short reply before arming an idle
+   transmitter while the assembly ISR independently keeps RX drained.
 4. **Add a test** ([docs/TESTING.md](TESTING.md)): a cursor test if the effect is
    observable via `ESC[6n`, or a shell/`printf` render test otherwise.
 5. `make` and run the suites.
@@ -74,7 +75,11 @@ and strip the overlay from its read-back.
   invariants (the TX capacity check/store/publish) with a brief `SEI`/`CLI`.
 - **Apple IRQ ABI.** The ROM saves A at `$45` and jumps through `$03FE`; an ISR
   must preserve X/Y, restore A, avoid cc65 runtime temporaries, and finish with
-  `RTI`. The serial ISR must not touch `PAGE2`.
+  `RTI`. Unclaimed IRQs must restore the same entry contract before chaining.
+  The serial ISR must not touch `PAGE2`.
+- **6502 stores can read first.** `STA (zp),Y` performs a dummy read before its
+  write. Never use it for ACIA DATA: the read clears RDRF. The serial ISR uses an
+  install-time-patched absolute `STA` for exactly this reason.
 - **C89 declarations.** cc65 wants declarations at the top of a block. Declaring a
   variable mid-block, or after a statement, is a compile error.
 - **Definition order.** A `static` function must be defined (or forward-declared)
