@@ -21,6 +21,12 @@ locations, so every access must be a real bus cycle and must not be optimized or
 cached by the compiler. Forgetting `volatile` here is a classic and confusing
 bug (see [docs/LESSONS.md](LESSONS.md)).
 
+TDR writes are the exception to using that dynamic pointer directly. cc65 emits
+`STA (zp),Y` for an indirect write, and the NMOS 6502 dummy-reads the destination
+before the write. A dummy read of the data register consumes RDR. `write_tdr()`
+therefore selects a slot-specific **volatile absolute store** (`STA $C0x8`), which
+has no destructive read cycle.
+
 ```c
 static volatile unsigned char *acia = (volatile unsigned char *)0xC0A8; /* slot 2 */
 ```
@@ -56,10 +62,11 @@ flowchart LR
   register never overruns. When the ring reaches 192 bytes it sends **XOFF**.
 - **`serial_getch()`** removes a byte for the parser and sends **XON** once the
   ring drains back to 64 bytes.
-- **`serial_put()`** waits for TDRE, then writes the byte — and **drains RX while
-  it waits**. Without that, a multi-byte reply (like the `ESC[?1;0c` answer to a
-  Device Attributes request) would block long enough for the host's next bytes to
-  overrun the receive register. See [docs/LESSONS.md](LESSONS.md).
+- **`serial_put()`** drains RX **before every TDRE check, including the first**,
+  then emits the byte through `write_tdr()`'s absolute store. The first drain
+  matters when TDRE is already ready: a multi-byte reply (like the `ESC[?1;0c`
+  answer to a Device Attributes request) must still receive the host's immediately
+  following bytes.
 - **When the ring is full**, both `serial_pump()` and `serial_put()` stop copying
   and leave the byte in the hardware register rather than lapping `r_head` past
   `r_tail` and silently overwriting unread data. The ring carries **no occupancy
@@ -92,64 +99,37 @@ the register that long loses data. Two situations cause it, and both are handled
 2. **Transmitting a reply** — mitigated by draining RX inside `serial_put()`'s
    transmit-wait loop.
 
-### Receive overrun while replying
+### Receive loss while replying
 
-The 6551 is **full duplex** at the shift-register level — transmitter and receiver
-run independently — but it still buffers only **one** received byte in RDR. If the
-CPU does not read RDR within about a byte time (~1 ms at 9600 baud), the next
-completing byte overwrites it and the `OVERRUN` status bit is set. That is faithful
-6551 behaviour, and MAME's `mos6551` models it exactly (separate TX/RX state
-machines; overwrite-on-overrun in the receiver).
+The 6551 is **full duplex** at the shift-register level, but it buffers only one
+received byte in RDR. The old synchronous reply path had three distinct loss
+windows when input arrived while a CPR or DA response was being transmitted:
 
-Emitting a CPR is *not* fully covered by our RX draining. `serial_put()` drains RX
-only while it spins on `TDRE == 0`; several windows in the reply path leave RDRF
-unserviced for too long:
+1. `serial_put()` checked TDRE before RDRF, so an immediately-ready transmit
+   skipped RX draining.
+2. cc65's dynamic-pointer TDR write used `STA (zp),Y`; the 6502 dummy read of the
+   data register consumed RDR and cleared receive status before writing TDR.
+3. `put_dec()` used cc65's slow `/10` and `%10` runtime while formatting CPR
+   coordinates, leaving RDR unserviced for more than a byte time.
 
-- `put_dec()` does software `/10` / `%10` division with no RX polling;
-- when `TDRE` is already set on entry, `serial_put()` writes immediately and drains
-  nothing;
-- after the final reply byte is queued, control returns up through
-  `report_cursor()` / the parser before the main loop pumps RX again.
+The repair closes each window directly: a do/while pre-drain runs before the first
+and every later TDRE check, `write_tdr()` uses slot-specific absolute stores, and
+coordinate formatting uses at most eight subtractions instead of division. This
+is real-hardware behavior, not an emulator workaround.
 
-So when two `ESC[6n` requests arrive back to back and the **second overlaps the
-first CPR's transmission**, a byte of the second request is overrun in RDR: its
-`ESC[6` prefix never reaches the parser, the surviving `n` prints as a literal
-glyph, and the RAM `cur_col` advances by one. (`report_cursor()` only *reads* the
-cursor via pure getters, so the reply path itself never moves it — the drift is
-entirely the stray glyph.)
+Two ROM-backed corpus cases guard the result:
 
-This was confirmed with a **raw-socket reproduction that bypasses the conformance
-harness entirely** (no windowing, no injected `ESC[6n`; RAM read directly via the
-MAME Lua memory probe):
+- `report-da-overlap-lossless` packs seven `DA -> private CSI -> marker` groups
+  into one transport window and requires all seven replies, all marker bytes, and
+  no literal CSI residue.
+- `report-cpr-6n-idempotent` requires two exact CPR replies and unchanged RAM
+  cursor state for back-to-back `ESC[6n`, closing issue #24.
 
-| Input (cursor parked at row 10, col 30) | `cur_col` drift | CPRs returned | Screen |
-| --- | --- | --- | --- |
-| single `ESC[6n` | 0 | 1 | clean |
-| `ESC[6n` → wait for CPR → `ESC[6n` (paced) | 0 | 2 | clean |
-| `ESC[6n ESC[6n` back to back (overlaps TX) | **+1** | **1** | stray `n` |
-
-Only the overlapping pair drifts, and it also **loses the second CPR** (the second
-request is genuinely corrupted). The paced pair is perfectly clean with both CPRs
-correct. This is therefore a **genuine firmware receive-overrun**, real-hardware
-class under the same byte timing — **not** a MAME artifact. (An earlier analysis
-misattributed it to the emulator; the raw repro and the MAME 6551 source disprove
-that.)
-
-The correct fix is **interrupt-driven RX** — an ISR that drains RDR the moment
-a byte arrives, decoupled from whatever the main loop is transmitting. The pointer
-FIFO in `serial.c` is already structured for that (single-producer/consumer, no
-critical section). A smaller polled fix (interleave `serial_pump()` through
-`report_cursor()` / `put_dec()`, or make `serial_put()` drain RX *before* the TDRE
-check) could also close this specific window. This defect is tracked to land with
-the interrupt-driven RX work.
-
-The conformance corpus documents the defect with `report-cpr-6n-idempotent`
-(category `reports`), marked `unsupported` so it scores as a clean **XFAIL** today
-and flips to **UNEXPECTED_PASS** once the interrupt-driven RX work removes the
-overrun — promote it to `supported` then. Note the reports harness independently
-chunks and paces input with its own `ESC[6n`, which amplifies the drift observed
-*through the runner* but is not its cause. See [docs/CONFORMANCE.md](CONFORMANCE.md)
-and [docs/TERMINAL.md](TERMINAL.md#csi--reports-and-modes).
+Interrupt-driven RX remains the broader defense against arbitrary long CPU stalls
+or hosts that ignore flow control. The synchronous report-overlap paths above are
+now covered without claiming that all possible receive-overrun sources are gone.
+See [docs/CONFORMANCE.md](CONFORMANCE.md) and
+[docs/TERMINAL.md](TERMINAL.md#csi--reports-and-modes).
 
 ## MAME wiring
 

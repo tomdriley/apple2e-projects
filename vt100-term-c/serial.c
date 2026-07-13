@@ -59,20 +59,46 @@ void serial_init(void)
     acia[2]   = CMD_NO_PARITY; /* command: no parity, DTR/RTS on */
 }
 
+/* Use absolute stores for TDR. An indirect indexed 6502 store dummy-reads the
+ * destination first, which would destructively consume a pending byte from RDR. */
+static void write_tdr(unsigned char c)
+{
+    switch (found_slot) {
+    case 1:
+        *(volatile unsigned char *)0xC098 = c;
+        break;
+    case 3:
+        *(volatile unsigned char *)0xC0B8 = c;
+        break;
+    case 4:
+        *(volatile unsigned char *)0xC0C8 = c;
+        break;
+    case 5:
+        *(volatile unsigned char *)0xC0D8 = c;
+        break;
+    case 6:
+        *(volatile unsigned char *)0xC0E8 = c;
+        break;
+    case 7:
+        *(volatile unsigned char *)0xC0F8 = c;
+        break;
+    case 2:
+    default: /* no detected card: preserve the slot-2 fallback */
+        *(volatile unsigned char *)0xC0A8 = c;
+        break;
+    }
+}
+
 void serial_put(char c)
 {
-    while ((acia[1] & ST_TDRE) == 0) {
-        /* While the transmitter drains, keep pulling any received byte into the
-         * ring. A reply like the ESC[?1;0c device-attributes answer is several
-         * bytes; without this the host's next bytes would overrun the 6551's
-         * one-byte receive register while we sit here waiting to transmit.
-         * Read the hardware register only when the ring has room, so a full ring
-         * leaves the byte in the register rather than overwriting unread data. */
+    /* Drain before every TDRE check, including the first, so an immediately-ready
+     * transmitter cannot bypass reception of a byte already waiting in RDR. */
+    do {
         if ((acia[1] & ST_RDRF) != 0 && ring_full() == 0) {
             ring_push(acia[0]);
         }
-    }
-    acia[0] = (unsigned char)c;
+    } while ((acia[1] & ST_TDRE) == 0);
+    write_tdr((unsigned char)c);
 }
 
 /* Drain every byte the ACIA holds into the ring buffer, then throttle the host

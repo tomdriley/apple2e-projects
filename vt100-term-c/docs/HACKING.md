@@ -64,7 +64,9 @@ and strip the overlay from its read-back.
 - **Memory-mapped I/O must be `volatile`.** The 6551 pointer is
   `volatile unsigned char *`; without it, `-O` caches reads of the status
   register and the driver hangs or misbehaves. Same for any soft switch you read
-  in a loop.
+  in a loop. Do not write the 6551 data register through that dynamic pointer:
+  cc65 emits `STA (zp),Y`, whose NMOS 6502 dummy read consumes RDR before writing
+  TDR. Use `serial.c`'s slot-specific volatile absolute `write_tdr()` stores.
 - **`-Cl` static locals.** The build uses statically allocated locals for smaller,
   faster code. This is only safe because nothing is reentrant. Do **not** add
   recursion or interrupt handlers without revisiting this.
