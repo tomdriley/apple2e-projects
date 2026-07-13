@@ -75,11 +75,23 @@ static unsigned char b_ready(void) { return b_count; }
 
 static unsigned char t_ring[RING_SIZE];
 static unsigned char t_head, t_tail;
+static unsigned char t_irq_active, t_arm_writes, t_disarm_writes;
 
 static void t_reset(void)
 {
-    t_head = 0;
-    t_tail = 0;
+    t_head          = 0;
+    t_tail          = 0;
+    t_irq_active    = 0;
+    t_arm_writes    = 0;
+    t_disarm_writes = 0;
+}
+
+static void t_arm(void)
+{
+    if (t_irq_active == 0) {
+        t_irq_active = 1;
+        ++t_arm_writes;
+    }
 }
 
 static unsigned char t_put(unsigned char b)
@@ -91,6 +103,24 @@ static unsigned char t_put(unsigned char b)
     }
     t_ring[t_head] = b;
     t_head         = nh;
+    t_arm();
+    return 1;
+}
+
+static unsigned char t_write(const unsigned char *data, unsigned char len)
+{
+    unsigned char i;
+    unsigned char nh;
+    for (i = 0; i < len; ++i) {
+        nh = (unsigned char)(t_head + 1);
+        if (nh == t_tail) {
+            t_arm();
+            return 0;
+        }
+        t_ring[t_head] = data[i];
+        t_head         = nh;
+    }
+    t_arm();
     return 1;
 }
 
@@ -103,6 +133,7 @@ static unsigned char t_push_front(unsigned char b)
     }
     t_ring[nt] = b;
     t_tail     = nt;
+    t_arm();
     return 1;
 }
 
@@ -118,6 +149,21 @@ static int t_get(void)
 }
 
 static unsigned char t_count(void) { return (unsigned char)(t_head - t_tail); }
+
+/* Model one TDRE-bearing ISR entry. Empty is the real active->idle transition;
+ * an idle TDRE (the bit is normally set even with its IRQ masked) is ignored. */
+static int t_irq_tdre(void)
+{
+    if (t_irq_active == 0) {
+        return -1;
+    }
+    if (t_head == t_tail) {
+        t_irq_active = 0;
+        ++t_disarm_writes;
+        return -1;
+    }
+    return t_get();
+}
 
 /* One retry of serial.c's resume_rx operation. A full queue or renewed RX
  * pressure must leave paused set; only claiming an XON slot clears it. */
@@ -145,14 +191,15 @@ static void check(const char *name, int cond)
 
 int main(void)
 {
-    unsigned      i;
-    unsigned      accepted;
-    int           g;
-    int           ok;
-    unsigned char v;
-    unsigned char reserved;
-    unsigned char paused;
-    int           first;
+    unsigned                   i;
+    unsigned                   accepted;
+    int                        g;
+    int                        ok;
+    unsigned char              v;
+    unsigned char              reserved;
+    unsigned char              paused;
+    int                        first;
+    static const unsigned char reply[] = { 0x1B, '[', '?', '1', ';', '0', 'c' };
 
     printf("ring_test: 6551 RX/TX ring buffers\n");
 
@@ -308,6 +355,49 @@ int main(void)
     paused = 1;
     check("tx: renewed RX pressure keeps the sender throttled",
         t_try_resume(&paused, RING_LOW + 1) == 0 && paused == 1 && t_count() == 0);
+
+    /* --- TX Scenario I: command writes follow state transitions ----------- */
+    t_reset();
+    check("tx irq: idle TDRE causes no redundant disarm",
+        t_irq_tdre() == -1 && t_irq_active == 0 && t_disarm_writes == 0);
+    (void)t_put('A');
+    (void)t_put('B');
+    check("tx irq: a burst arms exactly once",
+        t_irq_active == 1 && t_arm_writes == 1 && t_disarm_writes == 0);
+    check("tx irq: TDRE drains queued bytes without command writes",
+        t_irq_tdre() == 'A' && t_irq_tdre() == 'B' && t_arm_writes == 1
+            && t_disarm_writes == 0);
+    check("tx irq: first empty TDRE disarms exactly once",
+        t_irq_tdre() == -1 && t_irq_active == 0 && t_disarm_writes == 1);
+    check("tx irq: later idle TDRE remains a no-op",
+        t_irq_tdre() == -1 && t_arm_writes == 1 && t_disarm_writes == 1);
+
+    t_reset();
+    (void)t_push_front(XOFF);
+    check("tx irq: XOFF front-push arms an idle transmitter",
+        t_irq_active == 1 && t_arm_writes == 1 && t_count() == 1);
+    (void)t_put('A');
+    check("tx irq: enqueue behind XOFF does not re-arm",
+        t_arm_writes == 1 && t_irq_tdre() == XOFF && t_irq_tdre() == 'A');
+    (void)t_irq_tdre();
+    (void)t_put(XON);
+    check("tx irq: a later XON starts one new burst",
+        t_irq_active == 1 && t_arm_writes == 2 && t_disarm_writes == 1);
+
+    /* --- TX Scenario J: a reply is visible before an idle TX is armed ----- */
+    t_reset();
+    check("tx burst: complete reply queues before one arm",
+        t_write(reply, sizeof(reply)) != 0 && t_count() == sizeof(reply)
+            && t_irq_active == 1 && t_arm_writes == 1);
+    ok = 1;
+    for (i = 0; i < sizeof(reply); ++i) {
+        if (t_irq_tdre() != reply[i]) {
+            ok = 0;
+        }
+    }
+    check("tx burst: queued reply drains in exact order", ok && t_count() == 0);
+    check("tx burst: empty TDRE ends the single command burst",
+        t_irq_tdre() == -1 && t_irq_active == 0 && t_disarm_writes == 1);
 
     if (failures == 0) {
         printf("ring_test: PASS\n");
