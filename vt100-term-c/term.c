@@ -55,16 +55,30 @@ static void send_key(unsigned char c)
     serial_put((char)c);
 }
 
+/* Idle loop passes to wait through before painting the cursor. The host streams
+ * a case/line as a back-to-back burst; at 9600 baud the firmware drains each
+ * byte well inside one byte-time, so the receive ring goes momentarily empty
+ * between bytes of the same burst. Painting on the very first empty pass would
+ * therefore invert-and-restore the cursor cell around *every* received byte,
+ * adding per-byte work that can push the 6551's one-byte receive register into
+ * overrun (a dropped byte shifts the rest of the line left). Debouncing past the
+ * sub-millisecond inter-byte gap means the cursor is only painted once the host
+ * truly stops sending, so reception runs at full speed and the cursor still
+ * appears promptly (well under a frame) when the terminal is idle. */
+#define CURSOR_IDLE_PASSES 1200u
+
 void start(void)
 {
     volatile unsigned char off = MOTOR_OFF; /* read soft switch: stop drive motor */
     unsigned char          c;
+    unsigned int           idle; /* consecutive idle passes since the last byte */
 
     (void)off;
 
     serial_init();
     scr_init();
     vt100_init();
+    idle = 0;
 
     scr_puts("VT100 TERMINAL  80x24  READY");
     scr_cr();
@@ -75,10 +89,13 @@ void start(void)
     for (;;) {
         serial_pump(); /* drain the ACIA into the ring buffer */
         if (serial_rx_ready()) {
+            idle = 0;
             scr_cursor_erase();               /* clear the overlay before rendering */
             vt100_feed((char)serial_getch()); /* parse + render (ESC sequences) */
+        } else if (idle < CURSOR_IDLE_PASSES) {
+            idle++; /* still settling: hold off so a burst never flickers/overruns */
         } else {
-            scr_cursor_paint(); /* nothing to render: show the cursor while idle */
+            scr_cursor_paint(); /* genuinely idle: show the cursor (paints once) */
         }
         if (KBD & 0x80) { /* a key is waiting */
             c       = KBD & 0x7F;
