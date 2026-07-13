@@ -45,6 +45,19 @@ static unsigned char           found_slot;
 unsigned char          tx_ring[RING_SIZE];
 volatile unsigned char t_head, t_tail;
 volatile unsigned char xoff_sent;
+volatile unsigned char tx_irq_active;
+
+/* Called only with CPU interrupts masked. The command register is written on
+ * the idle->active transition, not for every queued byte: MAME's 6551 updates
+ * its internal divider on every command write, and real hardware needs no
+ * redundant re-arming either. */
+static void arm_tx(void)
+{
+    if (tx_irq_active == 0) {
+        tx_irq_active = 1;
+        acia[2]       = CMD_TX_ON;
+    }
+}
 
 /* Scan slots 7..1 for the SSC firmware signature (Pascal 1.1 protocol bytes).
  * Returns 1..7, or 0 if nothing matched. */
@@ -71,6 +84,7 @@ void serial_init(void)
     ring_reset();
     t_head = t_tail = 0;
     xoff_sent       = 0;
+    tx_irq_active   = 0;
     acia[1]         = 0;             /* status write -> soft reset */
     acia[3]         = CTRL_9600_8N1; /* control: baud + word length */
     /* Install the IRQ vector and arm the receiver interrupt (sets the command
@@ -96,8 +110,33 @@ void serial_put(char c)
     }
     tx_ring[t_head] = (unsigned char)c;
     t_head          = nh;
-    acia[2]         = CMD_TX_ON; /* arm the transmit interrupt */
+    arm_tx();
     irq_on();
+}
+
+/* Queue a complete protocol reply before starting an idle transmitter. RX IRQs
+ * are re-enabled between byte publications, but TX remains disarmed until the
+ * final byte is visible. If the ring fills, arm the partial burst so it can
+ * drain, then continue. */
+void serial_write(const char *data, unsigned char len)
+{
+    unsigned char nh;
+    while (len != 0) {
+        irq_off();
+        nh = (unsigned char)(t_head + 1);
+        if (nh == t_tail) {
+            arm_tx();
+            irq_on();
+            continue;
+        }
+        tx_ring[t_head] = (unsigned char)*data++;
+        t_head          = nh;
+        --len;
+        if (len == 0) {
+            arm_tx();
+        }
+        irq_on();
+    }
 }
 
 /* Queue XON and clear the throttled state as one ISR-safe operation. Keep
@@ -122,7 +161,7 @@ static void resume_rx(void)
     tx_ring[t_head] = XON;
     t_head          = nh;
     xoff_sent       = 0;
-    acia[2]         = CMD_TX_ON;
+    arm_tx();
     irq_on();
 }
 
