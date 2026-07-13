@@ -87,7 +87,6 @@ void start(void)
     serial_puts("VT100-BOOT\r\n"); /* headless boot marker */
 
     for (;;) {
-        serial_pump(); /* drain the ACIA into the ring buffer */
         if (serial_rx_ready()) {
             idle = 0;
             scr_cursor_erase();               /* clear the overlay before rendering */

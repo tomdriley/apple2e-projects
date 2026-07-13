@@ -33,8 +33,10 @@ display.
 cc65 compiles both the video `row_copy` inner loop and the `shadow_region_up`
 inner loop to the *same* shape, and it is strikingly inefficient: it recomputes a
 16-bit destination pointer and reloads the source base through zero-page
-indirection **every iteration** instead of walking a pointer. Counted
-instruction-by-instruction (from `build/screen80.s`, cycles for the 65C02):
+indirection **every iteration** instead of walking a pointer. The listing below
+is the historical polled-RX build used for the shadow-buffer measurements; it
+also shows the now-removed pump cadence. Counted instruction-by-instruction
+(cycles for the 65C02):
 
 ```
 L000E:  lda   i            ; 4    loop counter
@@ -86,6 +88,11 @@ Putting the pieces together for one `region_up(0,23)`:
 video/blank loops, every 16 in the shadow loop, plus once per row from
 `region_up`). With an empty ring its idle path is ~70 cycles plus the 6-cycle
 `jsr`, and it runs ~406 times per scroll.
+
+These cycle totals describe the historical benchmark binary. The current
+interrupt-driven driver removes every pump call, so current `build/screen80.s`
+has neither the stride check nor `_serial_pump`; the table remains useful for
+reproducing the shadow-removal comparison, not as a current scroll budget.
 
 ## Measured vs. predicted
 
@@ -166,26 +173,22 @@ Reading the numbers:
   save has no shadow to maintain, and the ALTBUFFER rendering between save and
   restore no longer mirrors every write — but the save now reads the bank-split
   video page back a row at a time (`read_row_glyphs`), and the restore redraw
-  bank-switches per cell and so must pump the ACIA after every cell (see the
-  overrun note below). Those make the save/restore itself a bit more expensive,
-  so the net gain is modest.
+  bank-switches per cell. Those make the save/restore itself a bit more
+  expensive, so the net gain is modest.
 
-### Cost of removal: two re-exposed ACIA overruns
+### Historical cost of removal: two polled-RX overruns
 
 Removing the shadow shifted the cc65-compiled timing of the render loops, which
-re-exposed two thin receive-overrun margins in the polled, single-byte-RX 6551
-path (see [docs/LESSONS.md](LESSONS.md)). Both were fixed by draining the ACIA
-more often: `read_row_glyphs` pumps every 8 cells during a row read-back, and the
-per-cell bank-switching loops (`blank_to`, `row_blank_from`, `scr_erase_chars`,
-`scr_insert_chars`, `scr_delete_chars`, and the alternate-screen `scr_restore_screen`
-redraw) now pump after every cell. These pumps are off the hot scroll path, so
-they do not dent the scroll numbers above (they are the reason `altscreen` gains
-less than the rest).
+re-exposed two thin receive-overrun margins in the former polled, single-byte-RX
+6551 path (see [docs/LESSONS.md](LESSONS.md)). At the time they were mitigated by
+pumping during row read-back and after each bank-switched cell. The
+interrupt-driven RX handler supersedes those timing patches: the same loops now
+contain no serial calls, and RDR service is independent of their cycle count.
 
 ## Reproducing
 
 - Baseline numbers: `python client/bench.py` (see `docs/TESTING.md` for the
   harness). Emulated-time pass is throttle-independent and deterministic.
-- Assembly: `make` regenerates `build/*.s`; the copy loops are `_row_copy` and
-  `_shadow_region_up` in `build/screen80.s`, and `_serial_pump` is in
-  `build/serial.s`. Line numbers shift when the code changes, so search by label.
+- Assembly: `make` regenerates `build/*.s`; inspect `_row_copy` in
+  `build/screen80.s`, `_serial_put` in `build/serial.s`, and the handwritten
+  `serial_isr.s`. Line numbers shift when the code changes, so search by label.

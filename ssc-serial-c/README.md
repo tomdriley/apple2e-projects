@@ -93,6 +93,9 @@ python client/roundtrip_test.py          # fake-Apple protocol test (no ROMs/emu
 python client/roundtrip_test.py --mame   # boot the disk in headless MAME, real 6502 code
 ```
 
+The MAME harness uses TCP port 6551 by default. Set `MAME_PORT` to use an
+isolated port when 6551 is already occupied.
+
 - **fake** (default) — a local stand-in reproduces `ssc-serial.c`'s exact byte
   behavior, so it always runs and pins down the client + wire protocol.
 - **mame** — runs the identical round trip against the actual program in headless

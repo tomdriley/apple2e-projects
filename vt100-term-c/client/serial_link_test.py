@@ -13,7 +13,8 @@ Covers the alternative-host binding:
     a note on Windows, where PTYs are unavailable.
   * ``docs/PROTOCOL.md`` matches the REAL firmware behavior -- the line settings,
     XON/XOFF thresholds, and query replies it documents are cross-checked against
-    the literals in ``serial.c`` / ``vt100.c`` so the doc can't drift into fiction.
+    the literals in ``serial.c`` / ``serial_isr.s`` / ``vt100.c`` so the doc can't
+    drift into fiction.
   * the code the doc hands to a host implementer (the CPR regex and the
     ``ESC[?1;0c`` Device Attributes literal) actually parses the firmware's replies.
 
@@ -36,6 +37,7 @@ import serial_link  # noqa: E402
 
 _PROTOCOL = (_ROOT / "docs" / "PROTOCOL.md").read_text(encoding="utf-8")
 _SERIAL_C = (_ROOT / "serial.c").read_text(encoding="utf-8")
+_SERIAL_ISR = (_ROOT / "serial_isr.s").read_text(encoding="utf-8")
 _VT100_C = (_ROOT / "vt100.c").read_text(encoding="utf-8")
 
 
@@ -90,13 +92,15 @@ def test_ptylink_loopback():
 def test_protocol_doc_matches_firmware():
     """The doc's contract must equal the real serial.c / vt100.c behavior."""
     # Line: 9600 8N1 via the 6551 control/command bytes.
-    assert "0x1E" in _SERIAL_C and "0x0B" in _SERIAL_C
+    assert "CTRL_9600_8N1 0x1E" in _SERIAL_C
+    assert "CMD_RX_ON = $09" in _SERIAL_ISR
+    assert "CMD_TX_ON = $05" in _SERIAL_ISR
     assert "9600 8N1" in _PROTOCOL
     # Flow control: XON/XOFF byte values and ring thresholds, quoted in the doc.
-    assert "#define XON       0x11" in _SERIAL_C
-    assert "#define XOFF      0x13" in _SERIAL_C
-    assert "#define RING_HIGH 192" in _SERIAL_C
-    assert "#define RING_LOW  64" in _SERIAL_C
+    assert "#define XON      0x11" in _SERIAL_C
+    assert "XOFF      = $13" in _SERIAL_ISR
+    assert "RING_HIGH = 192" in _SERIAL_ISR
+    assert "#define RING_LOW 64" in _SERIAL_C
     for token in ("0x13", "0x11", "192", "64"):
         assert token in _PROTOCOL, f"PROTOCOL.md omits real value {token}"
     # Query replies: DA identity and the DSR-status answer live in vt100.c.

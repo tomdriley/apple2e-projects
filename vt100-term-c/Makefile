@@ -49,7 +49,8 @@ CSRC     := $(wildcard *.c)
 COBJ     := $(patsubst %.c,$(BUILDDIR)/%.o,$(CSRC))
 CRT0     := $(BUILDDIR)/crt0.o
 MON      := $(BUILDDIR)/monitor.o
-OBJ      := $(CRT0) $(COBJ) $(MON)
+ISR      := $(BUILDDIR)/serial_isr.o
+OBJ      := $(CRT0) $(COBJ) $(MON) $(ISR)
 BIN      := $(BUILDDIR)/VT100.BIN
 DSK      := $(BUILDDIR)/vt100.dsk
 BASE     := dos33-base.dsk
@@ -58,8 +59,9 @@ BASE     := dos33-base.dsk
 # Super Serial Card in slot 2, its RS-232 port bridged to a null modem whose
 # bit stream is a TCP socket. MAME connects out as a client, so a Python
 # listener (client/) must already be running on this port.
-SERIAL_PORT := 6551
+SERIAL_PORT ?= 6551
 MAME_SERIAL := -sl2 ssc -sl2:ssc:rs232 null_modem -bitb socket.127.0.0.1:$(SERIAL_PORT)
+SSC_IRQ_LUA := $(CURDIR)/client/ssc_irq.lua
 # -aux ext80 supplies the auxiliary RAM the 80-column display needs.
 MAME_VIDEO  := -aux ext80 -skip_gameinfo -video bgfx -bgfx_backend d3d11
 
@@ -75,17 +77,14 @@ $(BUILDDIR):
 # Compile C -> 6502 assembly
 #   -O   optimize
 #   -Cl  static locals (fixed addresses, not the software stack): smaller/faster.
-#        Safe here because nothing is reentrant (no recursion/interrupts).
+#        Safe here because the C code is not reentrant: the only interrupt handler
+#        (serial_isr.s) is pure assembly and calls no C.
 $(BUILDDIR)/%.s: %.c monitor.h | $(BUILDDIR)
 	"$(CC65)" -O -Cl -t none -o $@ $<
 
-# Header dependencies not captured by the generic rule above. ring.c and
-# serial.c both #include ring.h, so a ring.h edit must rebuild their assembly
-# (and hence objects) or the firmware disk keeps stale RX-ring code while the
-# host ring_test -- which already lists ring.h -- picks up the new definitions.
-# These recipe-less rules only add prerequisites; the %.s pattern rule above
-# still supplies the compile recipe.
-$(BUILDDIR)/ring.s:   ring.h
+# Keep incremental builds safe: both users of ring.h must recompile when its
+# layout or API changes.
+$(BUILDDIR)/ring.s: ring.h
 $(BUILDDIR)/serial.s: ring.h
 
 # Assemble compiler output -> relocatable object
@@ -99,6 +98,10 @@ $(CRT0): crt0.s | $(BUILDDIR)
 # Assemble the hardware address registry (symbols only, zero bytes emitted)
 $(MON): monitor.s | $(BUILDDIR)
 	"$(CA65)" -t none -o $(MON) monitor.s
+
+# Assemble the interrupt-driven 6551 handler (pure asm; see serial.c)
+$(ISR): serial_isr.s | $(BUILDDIR)
+	"$(CA65)" -t none -o $(ISR) serial_isr.s
 
 # Link -> raw binary placed at $0800; runtime helpers pulled from none.lib
 $(BIN): $(OBJ) vt100.cfg
@@ -115,29 +118,27 @@ $(DSK): $(BIN) hello.bas
 	"$(AC)" -d $(DSK) HELLO 2>/dev/null || true
 	"$(AC)" -bas $(DSK) HELLO < hello.bas
 
-# MAME must run from its own directory so the relative rompath resolves
-run: $(DSK)
+# MAME models the SSC's physical interrupt switch (SW2:6), which defaults Off.
+# The Lua bootstrap turns it On before the interrupt-driven firmware boots.
+run: $(DSK) client/ssc_irq.lua
 	cd "$(dir $(MAME))" && "$(MAME)" apple2e -rompath "$(ROMPATH)" \
-		-flop1 "$(CURDIR)/$(DSK)" $(MAME_SERIAL) $(MAME_VIDEO)
+		-flop1 "$(CURDIR)/$(DSK)" $(MAME_SERIAL) $(MAME_VIDEO) \
+		-autoboot_script "$(SSC_IRQ_LUA)"
 
-debug: $(DSK)
+debug: $(DSK) client/ssc_irq.lua
 	cd "$(dir $(MAME))" && "$(MAME)" apple2e -rompath "$(ROMPATH)" \
-		-flop1 "$(CURDIR)/$(DSK)" $(MAME_SERIAL) $(MAME_VIDEO) -debug
+		-flop1 "$(CURDIR)/$(DSK)" $(MAME_SERIAL) $(MAME_VIDEO) \
+		-autoboot_script "$(SSC_IRQ_LUA)" -debug
 
 clean:
 	rm -rf $(BUILDDIR)
 
 # --- Host-side unit tests (ROM-free) ---------------------------------------
 # Compile the ring-buffer unit test with cc65's sim6502 target and run it on
-# the host through the sim65 simulator. The test LINKS the real ring module
-# (ring.c), so it exercises the shipped RX ring FIFO with the real cc65
-# compiler's integer/wraparound semantics -- no ROMs, MAME or serial socket
-# needed, so it runs in the hermetic CI job. The ring is compiled here to a
-# separate sim6502 object (ring_sim.o) so it never clobbers the firmware's
-# `-t none` build/ring.o. main() returns the failing-check count, so a
-# regression fails the build.
-TESTDIR   := tests
-TESTPRG   := $(BUILDDIR)/ring_test.prg
+# the host through sim65. The test links the real RX ring module and models the
+# TX front-push interleavings that cannot run without the hardware ISR.
+TESTDIR    := tests
+TESTPRG    := $(BUILDDIR)/ring_test.prg
 RINGSIMOBJ := $(BUILDDIR)/ring_sim.o
 SIM6502LIB ?= sim6502.lib
 

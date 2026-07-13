@@ -19,9 +19,9 @@ discipline lives in [serial.c](../serial.c); the query replies live in
 |-----------|-------|--------|
 | Baud | 9600 | `CTRL_9600_8N1 = 0x1E` written to the 6551 control register |
 | Data bits | 8 | same control byte |
-| Parity | none | `CMD_NO_PARITY = 0x0B` (command register) |
+| Parity | none | command register `0x09` idle / `0x05` while TX IRQ is armed |
 | Stop bits | 1 | control byte |
-| Modem lines | DTR + RTS asserted, held static | command byte `0x0B` |
+| Modem lines | DTR + RTS asserted, held static | command bytes `0x09` / `0x05` |
 
 So the line is **9600 8N1**. DTR and RTS are asserted once at init and never
 toggled — there is **no hardware (RTS/CTS) flow control**; pacing is purely
@@ -55,15 +55,16 @@ ring and throttles the host with the standard control bytes:
 | `XOFF` | `0x13` (`Ctrl-S`, DC3) | terminal → host: **stop sending**, my ring is filling |
 | `XON`  | `0x11` (`Ctrl-Q`, DC1) | terminal → host: **resume**, my ring has drained |
 
-Behavior (from `serial_pump` / `serial_getch` in [serial.c](../serial.c)):
+Behavior (from the RX ISR and `serial_getch`):
 
-- The terminal sends **XOFF** once the ring reaches **192** bytes (`RING_HIGH`).
+- The terminal front-pushes **XOFF** once the ring reaches **192** bytes, so it
+  jumps ahead of ordinary queued output.
 - The terminal sends **XON** once the ring drains back to **64** bytes
   (`RING_LOW`).
 
 Flow control is **unidirectional**: the terminal *sends* XON/XOFF to pace the
 host; it does **not** honor XON/XOFF coming *from* the host for its own
-transmissions (`serial_put` only waits for the transmit register to empty). The
+transmissions (the TX ISR does not interpret received flow-control bytes). The
 host must therefore drain the terminal's output promptly and never expects to
 pause it.
 
@@ -85,7 +86,7 @@ exact replies are tabulated in §5.
 DSR matters here for more than status reporting: `ESC[6n` is the terminal's only
 *in-band, request/response* back-channel. Because the line has **no hardware flow
 control** (§1) and only software XON/XOFF — which a host cannot react to instantly,
-so bytes already in flight can still overrun the ring (§3) — a host benefits from a
+so bytes already in flight can still fill the ring (§3) — a host benefits from a
 positive "you have processed everything up to exactly here" signal. An ordered DSR
 reply is precisely that, which is why the query does double duty below.
 
@@ -93,8 +94,8 @@ Because bytes are processed strictly in order (§2), a Device Status Report requ
 appended to a payload is only answered **after** everything before it has been
 drawn. That turns the standard `ESC[6n` cursor query into two things:
 
-1. **A boot/ready gate.** After the terminal boots it has a single-byte receiver;
-   the host's first bytes would be lost if sent too early. So a host sends
+1. **A boot/ready gate.** The host must not send until DOS has loaded the terminal
+   and installed its IRQ handler. So a host sends
    `ESC[6n` repeatedly until it receives a cursor report (`ESC[…R`). Only then is
    the terminal known to be up and reading. This is exactly
    [`vt100_shell.wait_ready`](../client/vt100_shell.py) and
@@ -117,9 +118,9 @@ host                              terminal
 
 ## 5. Query replies (the standard VT100 answers)
 
-The firmware answers three standard queries. Replies are ASCII, emitted a byte at
-a time by `serial_put` (which drains RX while it waits so a multi-byte reply never
-causes an overrun). Row/column are **1-based decimal**.
+The firmware answers three standard queries. Replies are ASCII, appended by
+`serial_put` to the TX ring and drained by the ISR independently of RX.
+Row/column are **1-based decimal**.
 
 | Request (host → terminal) | Reply (terminal → host) | Meaning |
 |---------------------------|-------------------------|---------|
@@ -128,8 +129,9 @@ causes an overrun). Row/column are **1-based decimal**.
 | `ESC [ c` or `ESC [ 0 c` (DA) | `ESC [ ? 1 ; 0 c` | Device Attributes: "VT100, no options" |
 
 Example: with the cursor on row 1, column 1, `ESC[6n` yields the 6 bytes
-`1B 5B 31 3B 31 52` (`ESC [ 1 ; 1 R`). The `ESC[?1;0c` answer to `ESC[c` is why
-`serial_put` drains RX mid-transmit — see [SERIAL.md](SERIAL.md).
+`1B 5B 31 3B 31 52` (`ESC [ 1 ; 1 R`). The `ESC[?1;0c` answer to `ESC[c`
+shares the TX ring with keyboard output while the ISR continues receiving — see
+[SERIAL.md](SERIAL.md).
 
 A host can match these with the same regexes the harness uses:
 

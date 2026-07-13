@@ -73,7 +73,7 @@
       },
       "report": "\\e[10;30R\\e[10;30R"
     },
-    "notes": "Two back-to-back DSR 6 queries must leave the RAM cursor unchanged and return two exact CPR replies. This formerly documented issue #24: synchronous reply gaps corrupted the second query, printed a stray final byte, and lost its reply. The serial_put pre-drain, absolute TDR stores, and division-free coordinate formatting close those gaps. The report-da-overlap-lossless companion independently checks the same receive-while-replying class with primary DA and following private CSI payload."
+    "notes": "Two back-to-back DSR 6 queries must leave the RAM cursor unchanged and return two exact CPR replies. This formerly documented issue #24: synchronous reply gaps corrupted the second query, printed a stray final byte, and lost its reply. Division-free formatting and absolute TDR stores close the report path's local stalls, while interrupt-driven RX captures overlapping input and the TX ring returns both replies in order."
   },
   {
     "id": "report-dsr-status-ok",

@@ -1,9 +1,10 @@
 # Serial I/O (6551 ACIA)
 
-[serial.c](../serial.c) drives the 6551 ACIA on the Super Serial Card at
-**9600 baud, 8N1**. It auto-detects the card's slot, buffers received bytes in a
-ring, and applies XON/XOFF flow control so the host can be told to pause while
-the Apple is busy drawing.
+[serial.c](../serial.c), [ring.c](../ring.c), and
+[serial_isr.s](../serial_isr.s) form the interrupt-driven 6551 ACIA driver for
+the Super Serial Card at **9600 baud, 8N1**. The driver auto-detects the card's
+slot, services RX and TX from one assembly IRQ handler, and uses XON/XOFF to
+bound the receive ring while the Apple is busy drawing.
 
 ## Registers
 
@@ -13,7 +14,7 @@ The 6551's four registers sit at `$C088 + slot*16`:
 |--------|----------|-------|
 | `+0` | Data | Read = received byte; write = transmit byte |
 | `+1` | Status | RDRF (`0x08`) = receive full; TDRE (`0x10`) = transmit empty; write = reset |
-| `+2` | Command | `0x0B` = no parity/echo/IRQ, DTR + RTS asserted |
+| `+2` | Command | `0x09` = RX IRQ on/TX IRQ off; `0x05` = RX + TX IRQs on; no parity/echo, DTR + RTS asserted |
 | `+3` | Control | `0x1E` = 9600 baud, 8 data bits, 1 stop bit |
 
 The register pointer is declared **`volatile`** — these are memory-mapped I/O
@@ -23,9 +24,8 @@ bug (see [docs/LESSONS.md](LESSONS.md)).
 
 TDR writes are the exception to using that dynamic pointer directly. cc65 emits
 `STA (zp),Y` for an indirect write, and the NMOS 6502 dummy-reads the destination
-before the write. A dummy read of the data register consumes RDR. `write_tdr()`
-therefore selects a slot-specific **volatile absolute store** (`STA $C0x8`), which
-has no destructive read cycle.
+before the write. A dummy read of the data register consumes RDR, so the assembly
+TX path must use a slot-specific absolute store.
 
 ```c
 static volatile unsigned char *acia = (volatile unsigned char *)0xC0A8; /* slot 2 */
@@ -44,78 +44,67 @@ $Cn05 == $38   $Cn07 == $18   $Cn0B == $01   $Cn0C == $31
 The first match sets `acia = $C088 + slot*16`. If nothing matches it falls back
 to slot 2 (`$C0A8`), which is where MAME wires the card.
 
-## Receive ring buffer and flow control
-
-Received bytes are drained from the one-byte hardware register into a 256-byte
-ring so nothing is lost while the terminal is busy:
+## Interrupt-driven RX and TX
 
 ```mermaid
 flowchart LR
-    ACIA[6551 RX register] -->|serial_pump| RING[256-byte ring]
-    RING -->|serial_getch| PARSER[vt100_feed]
-    RING -->|>= 192 bytes| XOFF[send XOFF]
-    RING -->|<= 64 bytes| XON[send XON]
+    ACIA[6551 ACIA] -->|RDRF IRQ| ISR[serial_isr.s]
+    ISR --> RX[ring.c RX FIFO]
+    RX -->|ring_pop| PARSER[vt100_feed]
+    APP[serial_put] --> TX[serial.c TX FIFO]
+    TX -->|TDRE IRQ| ISR
+    ISR -->|data register| ACIA
+    RX -->|>= 192| OFF[XOFF front-push]
+    RX -->|<= 64| ON[XON enqueue]
+    OFF --> TX
+    ON --> TX
 ```
 
-- **`serial_pump()`** copies every byte the ACIA holds into the ring. It is
-  called from the main loop **and** from inside the slow screen loops, so the
-  register never overruns. When the ring reaches 192 bytes it sends **XOFF**.
-- **`serial_getch()`** removes a byte for the parser and sends **XON** once the
-  ring drains back to 64 bytes.
-- **`serial_put()`** drains RX **before every TDRE check, including the first**,
-  then emits the byte through `write_tdr()`'s absolute store. The first drain
-  matters when TDRE is already ready: a multi-byte reply (like the `ESC[?1;0c`
-  answer to a Device Attributes request) must still receive the host's immediately
-  following bytes.
-- **When the ring is full**, both `serial_pump()` and `serial_put()` stop copying
-  and leave the byte in the hardware register rather than lapping `r_head` past
-  `r_tail` and silently overwriting unread data. The ring carries **no occupancy
-  counter**: it is a single-producer/single-consumer FIFO whose only state is
-  `r_head` and `r_tail` (both `unsigned char`, so they wrap mod 256 for free). One
-  slot is kept as a sentinel, so `r_head == r_tail` means empty and
-  `(r_head + 1) == r_tail` means full — 255 bytes usable. Occupancy for the
-  XON/XOFF thresholds is just `(unsigned char)(r_head - r_tail)`. Because each
-  pointer is written by only one side and a single-byte store is atomic on the
-  6502, this needs no critical section even once RX becomes interrupt-driven.
-  XON/XOFF normally keeps the ring well below full, so reaching the cap means the
-  host ignored XOFF; the excess is dropped cleanly instead of corrupting the
-  buffer.
+The 6551 has one IRQ output for both directions. The handler reads status once,
+services RDRF first, then TDRE:
 
-The ring FIFO itself (push/pop/occupancy/full/empty over `r_head`/`r_tail`) lives
-in its own module, [`ring.c`](../ring.c) / [`ring.h`](../ring.h); `serial.c`
-layers the 6551 register access and XON/XOFF flow control on top. Keeping the
-ring standalone lets the host unit test link the real code and gives the planned
-interrupt-driven RX path a clean seam.
+- **RX:** `serial_isr.s` reads the one-byte hardware register immediately and
+  publishes the byte to the receive FIFO. `ring.c` owns the 256-byte array and
+  its pointer operations; `r_head` is written only by the ISR and `r_tail` only
+  by the main loop. One sentinel slot distinguishes full from empty, so capacity
+  is 255 bytes and occupancy is `(unsigned char)(r_head - r_tail)`.
+- **TX:** `serial_put()` appends to a second 256-byte FIFO and enables the TX
+  interrupt. The ISR writes one queued byte whenever TDRE is set. When the queue
+  empties it writes command `0x09` to disable TX IRQ while leaving RX IRQ on;
+  otherwise TDRE would assert continuously.
+- **Full rings:** RX drains the ACIA and drops the newest byte if the host has
+  ignored XOFF long enough to fill all 255 slots. TX waits only when its 255
+  slots are occupied, re-enabling interrupts between retries so the ISR can
+  make space.
 
-## Overrun: the recurring theme
+Both indices in each FIFO are byte-sized and asynchronous indices are
+`volatile`. RX is lock-free because it has exactly one producer and one consumer.
+TX has one extra wrinkle: the ISR can inject urgent XOFF at the *front* while
+main appends at the back. `serial_put()` therefore masks IRQs for the short
+capacity-check/store/head-publish sequence. This prevents both sides claiming
+the final sentinel-adjacent slot and collapsing a full queue into `head == tail`.
 
-The 6551 buffers exactly one received byte. At 9600 baud that byte must be
-consumed within about a millisecond. Anything that keeps the CPU from draining
-the register that long loses data. Two situations cause it, and both are handled:
+## XON/XOFF priority
 
-1. **Slow screen operations** (clears, scrolls, character shifts) — mitigated by
-   calling `serial_pump()` every 8 cells inside those loops
-   ([docs/80COLUMN.md](80COLUMN.md)).
-2. **Transmitting a reply** — mitigated by draining RX inside `serial_put()`'s
-   transmit-wait loop.
+- At RX occupancy **192**, the ISR decrements `t_tail`, stores **XOFF** there, and
+  arms TX IRQ. This front-push makes XOFF the next transmitted byte even when
+  ordinary replies are already queued.
+- Once main drains RX to **64**, `serial_getch()` clears the throttled state and
+  appends **XON** normally. XON need not jump queued output because the host is
+  already stopped.
 
 ### Receive loss while replying
 
 The 6551 is **full duplex** at the shift-register level, but it buffers only one
-received byte in RDR. The old synchronous reply path had three distinct loss
-windows when input arrived while a CPR or DA response was being transmitted:
+received byte in RDR. The old synchronous reply path could leave it unserviced
+while polling TX or formatting a CPR. Interrupt-driven RX removes those main-loop
+gaps, division-free coordinate formatting bounds report latency, and queued TX
+publishes complete replies before an idle transmitter is armed.
 
-1. `serial_put()` checked TDRE before RDRF, so an immediately-ready transmit
-   skipped RX draining.
-2. cc65's dynamic-pointer TDR write used `STA (zp),Y`; the 6502 dummy read of the
-   data register consumed RDR and cleared receive status before writing TDR.
-3. `put_dec()` used cc65's slow `/10` and `%10` runtime while formatting CPR
-   coordinates, leaving RDR unserviced for more than a byte time.
-
-The repair closes each window directly: a do/while pre-drain runs before the first
-and every later TDRE check, `write_tdr()` uses slot-specific absolute stores, and
-coordinate formatting uses at most eight subtractions instead of division. This
-is real-hardware behavior, not an emulator workaround.
+An independent hardware hazard remains even with IRQ service: an NMOS 6502
+`STA (zp),Y` performs a dummy read of its destination before writing. Against the
+ACIA data register that read consumes RDR and clears receive status. The TX ISR
+therefore must write TDR with a slot-specific absolute `STA`.
 
 Two ROM-backed corpus cases guard the result:
 
@@ -125,11 +114,42 @@ Two ROM-backed corpus cases guard the result:
 - `report-cpr-6n-idempotent` requires two exact CPR replies and unchanged RAM
   cursor state for back-to-back `ESC[6n`, closing issue #24.
 
-Interrupt-driven RX remains the broader defense against arbitrary long CPU stalls
-or hosts that ignore flow control. The synchronous report-overlap paths above are
-now covered without claiming that all possible receive-overrun sources are gone.
-See [docs/CONFORMANCE.md](CONFORMANCE.md) and
-[docs/TERMINAL.md](TERMINAL.md#csi--reports-and-modes).
+The host must honor XON/XOFF. A host that ignores XOFF can still overflow the
+software ring, but rendering or reply generation can no longer overrun the
+6551's one-byte RDR merely because main was busy.
+
+## IRQ and PAGE2 contract
+
+The Apple IIe ROM IRQ path saves A at `$45` and jumps through the user vector at
+`$03FE`. `serial_isr_install()` publishes the slot-detected ACIA pointer, installs
+that vector, writes command `0x09`, and enables CPU interrupts. The pure-assembly
+handler saves/restores X and Y, restores A from `$45`, calls no C, and returns
+with `RTI`.
+
+Calling C from the ISR is forbidden: the build uses cc65 `-Cl`, whose static
+locals and runtime zero-page temporaries are not reentrant. The ISR owns three
+zero-page bytes (`aciap` and `sr_tmp`) and touches only the ACIA plus ring storage.
+The rings are in BSS above `$0800`, outside the `$0400-$07FF` text window, so the
+handler neither reads nor changes `PAGE2`. If it interrupts `cell_put()` while
+AUX is selected, the render resumes with the same bank selected.
+
+## The retired receive-overrun class
+
+The former polled driver had to call `serial_pump()` throughout screen clears,
+scrolls, alternate-screen copies, and TX wait loops. Any missed ~1 ms window at
+9600 baud could overwrite RDR. The strongest reproduction parked the cursor at
+row 10, column 30 and sent two `ESC[6n` requests back to back while the first CPR
+was transmitting:
+
+| Driver | Cursor drift | CPRs returned | Screen |
+|--------|-------------:|---------------:|--------|
+| old polled RX | +1 | 1 | stray `n` |
+| interrupt-driven RX/TX | 0 | 2 | clean |
+
+The supported conformance case `report-cpr-6n-idempotent` now requires both
+`ESC[10;30R` replies exactly and verifies that the stored cursor remains
+unchanged. The screen driver contains no serial pumping; slow operations are
+fully decoupled from RDR service.
 
 ## MAME wiring
 
@@ -140,7 +160,18 @@ socket, and connects **out** to that socket — so a host must be listening firs
 -sl2 ssc -sl2:ssc:rs232 null_modem -bitb socket.127.0.0.1:6551
 ```
 
-`-aux ext80` supplies the auxiliary RAM the 80-column display needs.
+`-aux ext80` supplies the auxiliary RAM the 80-column display needs. Set
+`MAME_PORT` to move the Python harnesses off the default port, or
+`SERIAL_PORT=<port>` for `make run`/`make debug`.
+
+### The SSC interrupt switch
+
+MAME faithfully models the physical SSC **Interrupts** switch (SW2:6) and
+defaults it to **Off**. Its `a2ssc` device only forwards the 6551 IRQ to the
+Apple II slot when that switch is On. Every project MAME script loads
+`client/ssc_irq.lua`, which sets the official MAME Lua field
+`:sl2:ssc:DSWX / Interrupts` to value `0` (On) before firmware boot. Omitting
+that bootstrap produces a connected serial link but no received bytes.
 
 ### The `a2ssc` ROM
 
@@ -151,5 +182,6 @@ terminal's slot auto-detection reads this firmware's signature.
 ## Real hardware
 
 On a physical IIe the same firmware runs unchanged. Wire a USB/RS-232 adapter to
-the Super Serial Card and use the `serial` transport in the Python clients, which
-auto-detect the port and baud. See [docs/BRIDGE.md](BRIDGE.md).
+the Super Serial Card, set **SW2:6 (Interrupts) On**, and use the `serial`
+transport in the Python clients, which auto-detect the port and baud. See
+[docs/BRIDGE.md](BRIDGE.md).

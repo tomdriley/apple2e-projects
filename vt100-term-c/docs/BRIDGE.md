@@ -53,8 +53,8 @@ relays bytes both ways in a thread.
   the pty.
 - ConPTY injects a startup probe (`ESC[1t ESC[c ESC[?1004h ESC[?9001h`) when a
   program attaches. The terminal's parser consumes these; the `ESC[c` triggers
-  the Device Attributes reply, which is why `serial_put()` must drain RX while
-  transmitting (see [docs/SERIAL.md](SERIAL.md)).
+  the Device Attributes reply, which is queued in the TX ring while the ISR
+  continues receiving (see [docs/SERIAL.md](SERIAL.md)).
 - A fully interactive `bash -i` under ConPTY + WSL interop can stall on job
   control. The automated test harness therefore runs each command in a fresh
   `wsl.exe -e bash -c "…"` instead (see [docs/TESTING.md](TESTING.md)); the

@@ -15,7 +15,7 @@ Most sequences are a few lines in the CSI dispatcher.
    with `getp(n)` (returns 0 if absent; apply the sequence's default). The
    `priv` flag is set when the CSI had a `?`.
 3. **Answer queries** (if it's a report) by calling `serial_put()`. Replies are
-   several bytes — that's fine, `serial_put()` keeps RX drained while it sends.
+   queued in the TX ring while the assembly ISR independently keeps RX drained.
 4. **Add a test** ([docs/TESTING.md](TESTING.md)): a cursor test if the effect is
    observable via `ESC[6n`, or a shell/`printf` render test otherwise.
 5. `make` and run the suites.
@@ -38,10 +38,9 @@ The reusable primitives in `screen80.c`:
 - `blank_to(row, to)` / `row_blank_from(row, from)` — blank a span of a row.
 - `region_up(top, bot)` / `region_down(top, bot)` — scroll a row range one line.
 
-Any loop that can run longer than ~1 ms must call `serial_pump()` so the 6551
-doesn't overrun. Single-bank row loops pump every 8 cells; per-cell
-bank-switching loops that use `cell_put()` must pump after every cell. When you
-shift cells within a row, read the source glyphs from the video page with
+Screen operations never service the ACIA. The RX ISR continues filling the ring
+during long clears, scrolls, bank switches, and alternate-screen copies. When
+you shift cells within a row, read the source glyphs from the video page with
 `read_row_glyphs(row, buf)` into a local buffer, then shift.
 
 ## The visible cursor is an overlay — keep it off-screen during work
@@ -66,10 +65,16 @@ and strip the overlay from its read-back.
   register and the driver hangs or misbehaves. Same for any soft switch you read
   in a loop. Do not write the 6551 data register through that dynamic pointer:
   cc65 emits `STA (zp),Y`, whose NMOS 6502 dummy read consumes RDR before writing
-  TDR. Use `serial.c`'s slot-specific volatile absolute `write_tdr()` stores.
-- **`-Cl` static locals.** The build uses statically allocated locals for smaller,
-  faster code. This is only safe because nothing is reentrant. Do **not** add
-  recursion or interrupt handlers without revisiting this.
+  TDR. The serial ISR must use a slot-specific absolute store.
+- **`-Cl` static locals.** C functions are not reentrant. The serial ISR is pure
+  assembly, calls no C, and uses dedicated zero-page scratch. Do not add
+  recursion or call C from an interrupt handler.
+- **Interrupt-shared state is `volatile`.** The ring indices written by the ISR
+  must be re-read by C. Keep shared byte writes atomic; protect multi-step
+  invariants (the TX capacity check/store/publish) with a brief `SEI`/`CLI`.
+- **Apple IRQ ABI.** The ROM saves A at `$45` and jumps through `$03FE`; an ISR
+  must preserve X/Y, restore A, avoid cc65 runtime temporaries, and finish with
+  `RTI`. The serial ISR must not touch `PAGE2`.
 - **C89 declarations.** cc65 wants declarations at the top of a block. Declaring a
   variable mid-block, or after a statement, is a compile error.
 - **Definition order.** A `static` function must be defined (or forward-declared)
@@ -79,15 +84,16 @@ and strip the overlay from its read-back.
   alternate-screen save area at `$6800` and the C stack. `make` prints the size;
   the linker map is `build/vt100.map`.
 - **Inspect the generated assembly.** `build/<name>.s` is the compiler's 6502
-  output. Reading it is the reliable way to judge a hot loop's cycle cost — that's
-  how the every-8-cells pump interval was chosen.
+  output. Check critical sections and hot loops there, and inspect
+  `build/vt100.map` for zero-page/BSS growth.
 
 ## Change the baud rate
 
 Set the control-register value in [serial.c](../serial.c) (`CTRL_9600_8N1 =
 0x1E`) to the 6551 code for the new rate, and match it on the host side (the
-Python clients default to 9600). Faster rates make full-screen redraws snappier
-but tighten the overrun margins — keep flow control on.
+Python clients default to 9600). Faster rates improve throughput but increase
+ISR frequency and fill the software ring faster during long renders — keep flow
+control on and re-run the ROM-backed stress cases.
 
 ## Change the screen size
 

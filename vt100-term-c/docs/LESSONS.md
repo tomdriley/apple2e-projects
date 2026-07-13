@@ -20,13 +20,14 @@ works identically on MAME and real hardware — unlike MAME `-autoboot_command`,
 which is emulator-only and timing-sensitive. (AppleCommander tokenizes the
 Applesoft greeting with `-bas`, not `-as`.)
 
-## The 6551 overrun, again and again
+## The 6551 overrun, again and again — then retired
 
-The 6551 holds exactly one received byte. At 9600 baud it must be read within
-about a millisecond, and two things kept violating that:
+The 6551 holds exactly one received byte. The former polled driver had to read it
+within about a millisecond at 9600 baud, and two things kept violating that:
 
 1. **Slow screen operations.** A full-row clear takes ~1.5 ms, longer than a byte
-   time, so the terminal dropped every other byte during clears and scrolls. Fix:
+   time, so the terminal dropped every other byte during clears and scrolls.
+   Temporary mitigation:
    call `serial_pump()` every 8 cells inside every slow loop. This was found by
    reading the compiler's assembly (`build/screen80.s`) to estimate the cycle
    cost per cell.
@@ -34,17 +35,19 @@ about a millisecond, and two things kept violating that:
    (`ESC[c`, which ConPTY does at startup), the terminal transmitted its 7-byte
    answer with a blocking `serial_put()` that did **not** drain RX — so the host's
    next bytes overran the register, leaving escape-sequence fragments like `04h`
-   on screen. Fix: drain RX inside `serial_put()`'s transmit-wait loop.
+   on screen. Temporary mitigation: drain RX inside `serial_put()`'s
+   transmit-wait loop.
 
-The lesson: **any** code path that can hold the CPU for a byte time must keep the
-receiver drained. Both fixes are just that, in different places.
+The polled-driver lesson was: **any** code path that can hold the CPU for a byte
+time must keep the receiver drained. Both mitigations were that rule in different
+places.
 
 A third instance showed up later under sustained scrolling: blanking the new
 bottom row of the shadow buffer after each scroll is a ~0.9 ms loop, and the byte
 that arrived during it was lost — so the last lines of a fast `seq 1 30` into a
-scroll region went missing. The fix was the same: pump inside that loop too. The
-rule that emerged is simply **no memory loop over more than ~40 bytes without a
-`serial_pump()`**. A region-scroll status-bar test is what exposed it.
+scroll region went missing. The mitigation was the same: pump inside that loop
+too. The rule that emerged was **no memory loop over more than ~40 bytes without
+a `serial_pump()`**. A region-scroll status-bar test is what exposed it.
 
 Removing the shadow buffer (below) brought two more instances — a good reminder
 that a rendering change can re-expose this class of bug somewhere new:
@@ -68,9 +71,21 @@ to stay under a byte time. Removing the shadow shifted that compiled timing just
 enough to cross the line — the render change and the serial bug were coupled
 through raw cycle count.
 
+The final fix removed the premise of all those timing patches: a pure-assembly
+IRQ handler now reads RDR as soon as the 6551 asserts RDRF, independently of the
+screen and reply paths. It also drains a TX ring on TDRE, so emitting a report no
+longer blocks main or creates an RX polling gap. Every `serial_pump()` call and
+the function itself were deleted. The back-to-back CPR regression that formerly
+lost the second request now returns both replies with no cursor drift.
+
+The stronger lesson is: when a one-byte hardware FIFO has an interrupt output,
+do not spread deadline-sensitive polling through unrelated rendering code.
+Centralize the deadline in the ISR and let the rest of the program consume a
+software FIFO.
+
 ## The ring's "full" guard that never fired
 
-The overrun fixes above lean on the 256-byte RX ring to soak up bursts. But the
+Those overrun mitigations relied on the 256-byte RX ring to soak up bursts. But the
 ring had its own latent bug: the occupancy counter `r_count` was an
 `unsigned char`, while `RING_SIZE` is 256. The full guards were written
 `r_count != RING_SIZE` — and since an `unsigned char` can only hold 0..255, that
@@ -85,7 +100,7 @@ into it.
 The obvious quick fix is to widen `r_count` to `unsigned` and compare
 `r_count < RING_SIZE` — that detects full and silences the warnings. But it leaves
 a 16-bit occupancy counter that is *redundant* with the head/tail pointers and,
-being multi-byte, is not read or written atomically — a wart for the planned
+being multi-byte, is not read or written atomically — a wart for the
 interrupt-driven RX path. The shipped fix instead **drops the counter entirely**
 and derives the state from the two pointers, the way a hardware FIFO does:
 
@@ -110,8 +125,8 @@ The pointer-compare ring is also smaller and faster than the counter version at 
 6502 level: no `inc low / bne / inc high` counter upkeep, an absolute-indexed store
 instead of building a zero-page pointer, and a single-byte threshold compare (the
 firmware image even shrank a few bytes). Because each pointer has exactly one
-writer, the single-producer/single-consumer split is lock-free — the natural shape
-for interrupt-driven RX.
+writer, the single-producer/single-consumer split is lock-free. That is now the
+actual ownership split: the ISR writes `r_head`, and main writes `r_tail`.
 
 The lesson: **an occupancy counter is redundant with the pointers, and redundant
 state is somewhere for a bug to hide** — here, a counter too narrow to represent a
@@ -133,12 +148,41 @@ not do. The full/empty logic is therefore covered instead by (1) the cc65 warnin
 disappearance (the old always-true comparison is gone), (2) the existing ROM-backed
 MAME conformance gate (proves the ring rework didn't regress normal receive), and
 (3) a ROM-free host unit test (`make test`, see [docs/TESTING.md](TESTING.md)) that
-drives the ring past capacity directly and asserts FIFO integrity — including full
-detection via `(head + 1) == tail` — with no lost or overwritten bytes. Accepting
-the absent corpus test is a deliberate, recorded deviation, not an oversight. The
-ring now lives in its own module (`ring.{c,h}`) that the unit test **links
-directly** rather than mirrors, so the test can never drift from shipped behavior;
-that shared seam also matters for the interrupt-driven RX path.
+links the real `ring.c` module, drives it past capacity directly, and asserts FIFO
+integrity — including full detection via `(head + 1) == tail` — with no lost or
+overwritten bytes. Accepting the absent corpus test is a deliberate, recorded
+deviation, not an oversight.
+
+## A front-push makes TX more than a plain SPSC ring
+
+The TX queue normally has one producer (`serial_put` at `t_head`) and one
+consumer (the ISR at `t_tail`). Urgent XOFF complicates that ownership: the ISR
+also decrements `t_tail` and inserts XOFF at the front so it jumps queued replies.
+
+At 254-byte occupancy, an unmasked main enqueue can observe the final free slot,
+then be interrupted while the ISR claims the same sentinel boundary from the
+other end. Publishing main's reserved head afterward makes `head == tail`, which
+falsely looks empty. The fix is a short main-side critical section covering the
+capacity recheck, data store, head publish, and TX-IRQ arm. If the queue is full,
+main re-enables IRQs before retrying so the ISR can drain it. The sim65 test
+models both legal orderings and includes the unsafe interleaving as a teeth check.
+
+The lesson: front insertion is another producer operation even when it writes the
+consumer index. Re-check the sentinel invariant under every interleaving, not
+just nominal head/tail ownership.
+
+## MAME models the SSC interrupt switch
+
+The 6551 IRQ can be enabled in its command register while the Apple still sees no
+slot interrupt: a physical Super Serial Card also gates IRQ through SW2:6. MAME's
+`a2ssc` source models that switch and defaults it Off. The first IRQ build booted
+and established the serial socket but never answered DSR until the test harness
+set the `:sl2:ssc:DSWX` **Interrupts** field to On.
+
+All MAME launch scripts now load `client/ssc_irq.lua`, and real-hardware setup
+must set SW2:6 On. The lesson: model the complete hardware signal path — device
+register, card jumper/switch, slot IRQ, ROM vector — rather than assuming a
+command-register bit reaches the CPU.
 
 ## Memory-mapped I/O must be `volatile`
 
