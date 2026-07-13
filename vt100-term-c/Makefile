@@ -79,6 +79,15 @@ $(BUILDDIR):
 $(BUILDDIR)/%.s: %.c monitor.h | $(BUILDDIR)
 	"$(CC65)" -O -Cl -t none -o $@ $<
 
+# Header dependencies not captured by the generic rule above. ring.c and
+# serial.c both #include ring.h, so a ring.h edit must rebuild their assembly
+# (and hence objects) or the firmware disk keeps stale RX-ring code while the
+# host ring_test -- which already lists ring.h -- picks up the new definitions.
+# These recipe-less rules only add prerequisites; the %.s pattern rule above
+# still supplies the compile recipe.
+$(BUILDDIR)/ring.s:   ring.h
+$(BUILDDIR)/serial.s: ring.h
+
 # Assemble compiler output -> relocatable object
 $(BUILDDIR)/%.o: $(BUILDDIR)/%.s
 	"$(CA65)" -t none -o $@ $<
