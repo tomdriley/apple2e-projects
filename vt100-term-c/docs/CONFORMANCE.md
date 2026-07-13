@@ -249,6 +249,13 @@ destructive bus read; interrupt-driven RX retains input during arbitrary main-lo
 work, and queued TX preserves complete replies. See
 [docs/SERIAL.md](SERIAL.md#receive-loss-while-replying).
 
+`report-da-followed-by-private-csi` covers the narrower full-duplex race that
+found the destructive 6502 store dummy read. It sends `ESC[c` immediately
+followed by `ESC[?1004h` and a sentinel, requires the exact DA reply, and asserts
+that no private-CSI fragment reaches the screen. The repeated stress harness
+adds bus-level proof by comparing the transmitted payload byte-for-byte with
+RX-ring publications.
+
 ### What the first run found
 
 - **Reference agreement at the first oracle run: 98.5%** (131/133 strict-spec cases);

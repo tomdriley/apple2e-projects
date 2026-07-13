@@ -83,6 +83,22 @@ do not spread deadline-sensitive polling through unrelated rendering code.
 Centralize the deadline in the ISR and let the rest of the program consume a
 software FIFO.
 
+The first full-duplex ISR still had a subtler 6502 bus-cycle bug. TX used
+`STA (aciap),Y` for the slot-detected data register. An indexed-indirect store
+performs a dummy read before writing; if a receive byte completed after the
+ISR's status sample, that dummy read consumed ACIA DATA and cleared RDRF. The
+byte appeared in the bus trace but never reached the ring, and no overrun flag
+could report it. An install-time-patched absolute `STA $ffff` removed the read.
+The lesson is broader than this chip: with MMIO, inspect every bus cycle of an
+addressing mode, not only the instruction's advertised write.
+
+The same stress work made command state explicit. The driver writes `$05` only
+on an idle-to-active TX transition and `$09` only on the final empty TDRE; it
+does not rewrite the command register for every queued byte. Protocol replies
+are published as bursts, and the ISR re-samples status after RX/TX service.
+Exact MAME taps now compare every transmitted input byte with every RX-ring
+publication, which catches silent consumption that screen-only checks miss.
+
 ## The ring's "full" guard that never fired
 
 Those overrun mitigations relied on the 256-byte RX ring to soak up bursts. But the

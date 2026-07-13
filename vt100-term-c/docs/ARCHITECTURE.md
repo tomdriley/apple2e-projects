@@ -36,7 +36,7 @@ flowchart LR
 - **`monitor.s/.h`** is just a registry of hardware addresses (soft switches,
   I/O locations, ROM entry points). It emits no code.
 - **`crt0.s`** is the startup shim: set up the cc65 C stack, zero BSS, call
-  `start()`, and return to DOS on exit.
+  `start()`, remove the serial IRQ handler, and return to DOS on exit.
 
 ## Boot flow
 
@@ -95,6 +95,7 @@ terminal. See [docs/80COLUMN.md](80COLUMN.md) and [docs/TESTING.md](TESTING.md).
 ## Why cc65 `-Cl` (static locals)
 
 The build uses `-Cl`, which gives functions statically allocated locals instead
-of software-stack frames — smaller and faster 6502 code. This is safe because
-nothing is reentrant: there are no interrupts and no recursion. See
+of software-stack frames — smaller and faster 6502 code. C remains
+non-reentrant: there is no recursion, and the interrupt handler is pure assembly
+with private zero-page scratch and no C calls. See
 [docs/HACKING.md](HACKING.md) for the cc65 conventions that matter here.
