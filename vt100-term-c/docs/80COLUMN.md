@@ -95,13 +95,11 @@ saving the screen for the alternate-screen buffer. The test harness uses the
 same idea externally, reading both banks between MAME frames; see
 [docs/TESTING.md](TESTING.md).
 
-## The overrun hazard
+## Serial independence
 
-At 9600 baud a byte arrives roughly every millisecond, but the 6551 has only a
-one-byte receive register. Removing the separate screen copy re-exposed thin
-timing margins in the slow paths. Single-bank row fills and copies pump
-periodically, `read_row_glyphs()` pumps every 8 cells, and per-cell
-bank-switching erase/shift loops pump after every cell. Each `cell_put()` flips
-`PAGE2` and is slow enough in cc65 that even a short erase can otherwise drop
-the byte that follows an escape sequence. This subtlety is documented in
-[docs/SERIAL.md](SERIAL.md) and [docs/LESSONS.md](LESSONS.md).
+The old polled driver had to drain the 6551 inside these slow banked loops; even
+a short erase could exceed the one-byte receive register's ~1 ms margin. RX is
+now interrupt-driven, so row copies, read-back, and per-cell PAGE2 switching
+contain no serial calls. The ISR touches only rings above `$0800` and ACIA I/O,
+not the `$0400-$07FF` banked window, so an interrupt during `cell_put()` resumes
+with the same MAIN/AUX bank selected. See [docs/SERIAL.md](SERIAL.md).

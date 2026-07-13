@@ -10,18 +10,14 @@ logic that a boot test cannot observe:
 | `client/vt100_test.py` | Cursor motion, keyboard | The terminal's own position reports and transmitted bytes |
 | `client/shell_test.py` | Rendered screen from real shell output | A snapshot of the 80×24 screen |
 | `client/conformance/runner.py` | Spec conformance across the VT100/ECMA-48 feature space | A spec-derived corpus graded by video-RAM, state-variable, and wire probes |
-| `tests/ring_test.c` (`make test`) | 6551 RX ring FIFO integrity under overflow | Compiled with cc65's `sim6502` target and run on the host under `sim65` — no ROMs, MAME, or serial socket |
+| `tests/ring_test.c` (`make test`) | RX overflow integrity and TX/XOFF ring interleavings | Compiled with cc65's `sim6502` target and run on the host under `sim65` — no ROMs, MAME, or serial socket |
 
-The ring unit test exists because the RX ring-full bug is a
-buffer-overflow/type defect that a conformance corpus case cannot reliably
-observe — flow control (XON/XOFF) normally keeps the ring from ever filling. It
-**links the real ring module** (`ring.c`, shared with `serial.c`) rather than a
-hand-copied mirror, drives the count-free, sentinel-slot FIFO past its 255-byte
-capacity, and asserts that full is detected (`(head + 1) == tail`) with no bytes
-lost or overwritten; it also runs a local model of the original counter-based
-logic to prove the checks have teeth. Because the test and the firmware compile
-the same `ring.c`, the ring can no longer drift out of sync with shipped
-behavior.
+The unit test links the real count-free RX implementation in `ring.c`, drives it
+past its 255-byte capacity, and asserts that full is detected with no overwrite;
+the original counter-based bug remains as a teeth check. Because the hardware
+ISR cannot run under sim65, the TX section models the exact enqueue, consume,
+and XOFF front-push operations. It covers both legal near-full interleavings and
+demonstrates why an unmasked enqueue can collapse the sentinel.
 
 ## Continuous integration & reproducible toolchain
 
@@ -218,6 +214,10 @@ python client/conformance/runner.py --list                   # list the corpus w
 python client/conformance/runner.py --target mame --strict   # also fail on unexpected passes
 ```
 
+All Python MAME harnesses use port 6551 by default. Set `MAME_PORT` when another
+process owns it, for example
+`MAME_PORT=28482 python client/conformance/runner.py --target mame`.
+
 It boots MAME once (like `shell_test.py`), streams each case's input with the
 windowed-lossless sender, waits for the screen to settle, then reads three
 automated oracle channels — the video-RAM glyph/inverse planes, the firmware
@@ -335,6 +335,9 @@ dump.
 ## Requirements
 
 - The `a2ssc` ROM and `-aux ext80` (see [docs/SERIAL.md](SERIAL.md)).
+- The SSC's **Interrupts** switch must be On. Every automated launcher loads
+  `client/ssc_irq.lua` to set MAME's SW2:6 field before boot; physical hardware
+  must have SW2:6 set On as well.
 - `shell_test.py` additionally needs a working `wsl.exe` default distro and
   `pywinpty` in the Python environment. It warms up WSL (`bash -c true`) before
   timing anything, because the first WSL call cold-starts for a few seconds.
@@ -346,7 +349,7 @@ dump.
 
 The DSR cursor tests also run against a physical Apple IIe over the Super Serial
 Card — no MAME, no bash. Boot the `vt100.dsk` disk on the Apple, wire a USB/RS-232
-adapter to the card, then:
+adapter to the card, set SW2:6 (Interrupts) On, then:
 
 ```sh
 python client/vt100_test.py --serial            # auto-detect the port
@@ -413,14 +416,12 @@ and checks every corpus file), then grade it with
 `python client/conformance/runner.py --target mame -k <your-id>`.
 
 **A firmware logic unit** (something a boot test cannot observe — e.g. a ring or
-counter overflow that flow control normally prevents) → put the logic in its own
-module the test can **link directly** (as `ring.{c,h}` does), or, if that is not
-practical, a self-contained C file under `tests/` that models it; compile it for
-cc65's `sim6502` target and run it under `sim65`, returning the failing-check
-count from `main()` so the build fails on a regression. Wire it into the `test`
-target in the [`Makefile`](../Makefile) and run it with `make test`; the
-`hermetic-checks` CI job already invokes it. `tests/ring_test.c` (the RX-ring
-test) is the model to copy — it links the real `ring.c` and adds a local model of
-the pre-fix logic so the assertions provably distinguish them.
+counter overflow that flow control normally prevents) → prefer extracting and
+linking the real C module, as `tests/ring_test.c` does for `ring.c`. Model only
+the hardware-specific boundary that cannot run under sim65 (its TX tests model
+the assembly ISR). Include a pre-fix or unsafe path when useful so the assertions
+provably distinguish the bug. Return the failing-check count from `main()`, wire
+the program into the `test` target, and run `make test`; `hermetic-checks`
+already invokes it.
 
 See [docs/HACKING.md](HACKING.md) for implementing the feature the test drives.

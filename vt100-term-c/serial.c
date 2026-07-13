@@ -9,26 +9,42 @@
 #include "serial.h"
 #include "ring.h"
 
-#define ST_RDRF       0x08 /* receive data register full   */
-#define ST_TDRE       0x10 /* transmit data register empty */
 #define CTRL_9600_8N1 0x1E /* 9600 baud, 8 data bits, 1 stop bit */
-#define CMD_NO_PARITY 0x0B /* no parity/echo/IRQ; DTR + RTS asserted */
+/* Command register: no parity/echo, DTR + RTS asserted, receiver IRQ enabled.
+ * CMD_RX_ON leaves the transmit IRQ off; the ISR raises it to CMD_TX_ON while
+ * the transmit ring is draining and drops it back when the ring empties.
+ * (The old polled driver used 0x0B, which disabled the receiver IRQ.) */
+#define CMD_TX_ON     0x05 /* RX IRQ on, TX IRQ on  */
 
-#define XON       0x11
-#define XOFF      0x13
-#define RING_HIGH 192 /* send XOFF once the ring reaches this occupancy    */
-#define RING_LOW  64  /* send XON once the ring drains back to this        */
+#define XON      0x11
+#define RING_LOW 64 /* send XON once the ring drains back to this        */
+/* XOFF (and its high-water threshold) lives in serial_isr.s, where the RX ISR
+ * front-pushes it the moment the ring fills past the high-water mark. */
+
+/* Assembly helpers (serial_isr.s): the shared 6551 interrupt handler plus brief
+ * critical sections for the C side, which shares the command register and
+ * xoff_sent with the ISR. */
+void serial_isr_install(volatile unsigned char *acia_base);
+void irq_off(void); /* SEI: mask CPU interrupts   */
+void irq_on(void);  /* CLI: enable CPU interrupts */
 
 /* Register pointer: [0]=data, [1]=status, [2]=command, [3]=control.
  * volatile: these are memory-mapped registers, so every access must be real. */
 static volatile unsigned char *acia = (volatile unsigned char *)0xC0A8; /* slot 2 */
 static unsigned char           found_slot;
 
-/* The receive FIFO itself lives in ring.c (a lock-free single-producer/
- * single-consumer pointer ring); serial.c layers XON/XOFF flow control on top
- * of it. Keeping the ring in its own module lets the host unit test link the
- * real code and gives interrupt-driven RX a clean seam. */
-static unsigned char xoff_sent;
+/* The RX FIFO lives in ring.c; serial_isr.s owns its
+ * producer end and the main loop consumes it through ring_pop().
+ *
+ * The TX FIFO runs in the opposite direction: the main loop appends at t_head,
+ * while the ISR drains and may front-push urgent XOFF at t_tail. The front-push
+ * is a second producer operation, so serial_put masks interrupts while it
+ * rechecks capacity, stores the byte and publishes t_head. Without that small
+ * critical section, a near-full queue could have its sentinel consumed by an
+ * interleaved XOFF push and momentarily look empty. */
+unsigned char          tx_ring[RING_SIZE];
+volatile unsigned char t_head, t_tail;
+volatile unsigned char xoff_sent;
 
 /* Scan slots 7..1 for the SSC firmware signature (Pascal 1.1 protocol bytes).
  * Returns 1..7, or 0 if nothing matched. */
@@ -53,83 +69,74 @@ void serial_init(void)
         acia = (volatile unsigned char *)(0xC088 + ((unsigned)found_slot << 4));
     }
     ring_reset();
-    xoff_sent = 0;
-    acia[1]   = 0;             /* status write -> soft reset */
-    acia[3]   = CTRL_9600_8N1; /* control: baud + word length */
-    acia[2]   = CMD_NO_PARITY; /* command: no parity, DTR/RTS on */
+    t_head = t_tail = 0;
+    xoff_sent       = 0;
+    acia[1]         = 0;             /* status write -> soft reset */
+    acia[3]         = CTRL_9600_8N1; /* control: baud + word length */
+    /* Install the IRQ vector and arm the receiver interrupt (sets the command
+     * register and enables CPU interrupts). From here the ISR owns rx_ring's
+     * producer end and tx_ring's consumer end. */
+    serial_isr_install(acia);
 }
 
-/* Use absolute stores for TDR. An indirect indexed 6502 store dummy-reads the
- * destination first, which would destructively consume a pending byte from RDR. */
-static void write_tdr(unsigned char c)
-{
-    switch (found_slot) {
-    case 1:
-        *(volatile unsigned char *)0xC098 = c;
-        break;
-    case 3:
-        *(volatile unsigned char *)0xC0B8 = c;
-        break;
-    case 4:
-        *(volatile unsigned char *)0xC0C8 = c;
-        break;
-    case 5:
-        *(volatile unsigned char *)0xC0D8 = c;
-        break;
-    case 6:
-        *(volatile unsigned char *)0xC0E8 = c;
-        break;
-    case 7:
-        *(volatile unsigned char *)0xC0F8 = c;
-        break;
-    case 2:
-    default: /* no detected card: preserve the slot-2 fallback */
-        *(volatile unsigned char *)0xC0A8 = c;
-        break;
-    }
-}
-
+/* Queue one byte for transmission. This only waits when all 255 usable slots
+ * are occupied; interrupts are re-enabled between retries so the ISR can keep
+ * receiving and drain the TX queue. The capacity check, store and head publish
+ * are one critical section because the ISR can also add XOFF at the front. */
 void serial_put(char c)
 {
-    /* Drain before every TDRE check, including the first, so an immediately-ready
-     * transmitter cannot bypass reception of a byte already waiting in RDR. */
-    do {
-        if ((acia[1] & ST_RDRF) != 0 && ring_full() == 0) {
-            ring_push(acia[0]);
+    unsigned char nh;
+    for (;;) {
+        irq_off();
+        nh = (unsigned char)(t_head + 1);
+        if (nh != t_tail) {
+            break;
         }
-    } while ((acia[1] & ST_TDRE) == 0);
-    write_tdr((unsigned char)c);
+        irq_on();
+    }
+    tx_ring[t_head] = (unsigned char)c;
+    t_head          = nh;
+    acia[2]         = CMD_TX_ON; /* arm the transmit interrupt */
+    irq_on();
 }
 
-/* Drain every byte the ACIA holds into the ring buffer, then throttle the host
- * with XOFF if the ring is getting full. Called from the main loop and from
- * inside the screen driver's slow clear/scroll loops, so the 6551's one-byte
- * receive register never overruns while we are busy drawing. */
-void serial_pump(void)
+/* Queue XON and clear the throttled state as one ISR-safe operation. Keep
+ * xoff_sent set while a full TX ring makes us wait, so the RX ISR cannot
+ * mistake the pause for a new high-water crossing. Recheck RX occupancy after
+ * every wait because the host may not have honored XOFF yet. */
+static void resume_rx(void)
 {
-    while ((acia[1] & ST_RDRF) != 0 && ring_full() == 0) {
-        ring_push(acia[0]);
+    unsigned char nh;
+    for (;;) {
+        irq_off();
+        if (xoff_sent == 0 || ring_count() > RING_LOW) {
+            irq_on();
+            return;
+        }
+        nh = (unsigned char)(t_head + 1);
+        if (nh != t_tail) {
+            break;
+        }
+        irq_on();
     }
-    if (xoff_sent == 0 && ring_count() >= RING_HIGH) {
-        serial_put((char)XOFF);
-        xoff_sent = 1;
-    }
+    tx_ring[t_head] = XON;
+    t_head          = nh;
+    xoff_sent       = 0;
+    acia[2]         = CMD_TX_ON;
+    irq_on();
 }
 
-/* Returns the ring occupancy (0..255); callers use it only as a "bytes waiting"
- * boolean. */
 unsigned char serial_rx_ready(void) { return ring_count(); }
 
 int serial_getch(void)
 {
     int c;
     c = ring_pop();
-    if (c < 0) { /* empty */
+    if (c < 0) {
         return -1;
     }
     if (xoff_sent != 0 && ring_count() <= RING_LOW) {
-        serial_put((char)XON);
-        xoff_sent = 0;
+        resume_rx();
     }
     return c;
 }

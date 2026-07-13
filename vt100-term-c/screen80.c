@@ -105,14 +105,8 @@ static unsigned char cell_get(unsigned char col, unsigned char row)
 /* Read one whole video row's 80 glyphs into buf, using just two bank switches:
  * even columns come from AUX, odd columns from MAIN. Leaves MAIN banked. buf
  * must live outside the $0400-$07FF text page (a stack or fixed-RAM buffer).
- *
- * Reading a whole row is slow in cc65 (~3 ms), which is several 9600-baud byte
- * times, so we drain the ACIA as we go: the 6551 has a single receive register
- * (no FIFO) and reception is polled, so without this a host streaming bytes
- * during a save (DECSET ?1049h reads all 24 rows back-to-back) would overrun the
- * register and silently drop the bytes that follow. serial_pump() only touches
- * the ACIA (I/O space) and the ring buffer (outside $0400-$07FF), so it is safe
- * to call with either bank paged in. */
+ * Reception is interrupt-driven, so this slow read no longer has to drain the
+ * ACIA itself -- the ISR captures incoming bytes into the ring while we work. */
 static void read_row_glyphs(unsigned char row, unsigned char *buf)
 {
     unsigned char *base = (unsigned char *)rowbase[row];
@@ -120,16 +114,10 @@ static void read_row_glyphs(unsigned char row, unsigned char *buf)
     BANK_AUX();
     for (i = 0; i < PERROW; ++i) {
         buf[i << 1] = base[i];
-        if ((i & 7) == 0) {
-            serial_pump();
-        }
     }
     BANK_MAIN();
     for (i = 0; i < PERROW; ++i) {
         buf[(i << 1) + 1] = base[i];
-        if ((i & 7) == 0) {
-            serial_pump();
-        }
     }
 }
 
@@ -139,7 +127,6 @@ static void row_blank_from(unsigned char row, unsigned char from)
     unsigned char col;
     for (col = from; col < SCR_COLS; ++col) {
         cell_put(col, row, BLANK);
-        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
 }
 
@@ -150,13 +137,6 @@ static void blank_to(unsigned char row, unsigned char to)
     unsigned char col;
     for (col = 0; col <= to; ++col) {
         cell_put(col, row, BLANK);
-        /* Drain the ACIA after every cell. Each cell_put bank-switches the video
-         * page, which in cc65 takes a sizeable fraction of a 9600-baud byte time,
-         * so even a short erase (e.g. EL-to-BOL) can span more than one byte time.
-         * The 6551 has a single RX register with no FIFO and is polled, so a
-         * coarser cadence lets the byte that follows the sequence overrun and be
-         * lost before the parser reads it. */
-        serial_pump();
     }
 }
 
@@ -168,9 +148,6 @@ static void row_copy(unsigned char dst, unsigned char src)
     unsigned char  i;
     for (i = 0; i < PERROW; ++i) {
         d[i] = s[i];
-        if ((i & 7) == 0) {
-            serial_pump(); /* drain the ACIA often enough not to overrun */
-        }
     }
 }
 
@@ -180,9 +157,6 @@ static void row_blank_bank(unsigned char row)
     unsigned char  i;
     for (i = 0; i < PERROW; ++i) {
         d[i] = BLANK;
-        if ((i & 7) == 0) {
-            serial_pump(); /* drain the ACIA often enough not to overrun */
-        }
     }
 }
 
@@ -194,14 +168,12 @@ static void region_up(unsigned char top, unsigned char bot)
     BANK_AUX();
     for (row = top; row < bot; ++row) {
         row_copy(row, row + 1);
-        serial_pump();
     }
     row_blank_bank(bot);
 
     BANK_MAIN();
     for (row = top; row < bot; ++row) {
         row_copy(row, row + 1);
-        serial_pump();
     }
     row_blank_bank(bot);
 }
@@ -214,14 +186,12 @@ static void region_down(unsigned char top, unsigned char bot)
     BANK_AUX();
     for (row = bot; row != top; --row) {
         row_copy(row, row - 1);
-        serial_pump();
     }
     row_blank_bank(top);
 
     BANK_MAIN();
     for (row = bot; row != top; --row) {
         row_copy(row, row - 1);
-        serial_pump();
     }
     row_blank_bank(top);
 }
@@ -336,11 +306,9 @@ void scr_insert_chars(unsigned char n)
     read_row_glyphs(cur_row, buf);
     for (col = SCR_COLS - 1; col >= cur_col + n; --col) {
         cell_put(col, cur_row, buf[col - n]);
-        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
     for (col = cur_col; col < cur_col + n; ++col) {
         cell_put(col, cur_row, BLANK);
-        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
 }
 
@@ -356,11 +324,9 @@ void scr_delete_chars(unsigned char n)
     read_row_glyphs(cur_row, buf);
     for (col = cur_col; col + n < SCR_COLS; ++col) {
         cell_put(col, cur_row, buf[col + n]);
-        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
     for (; col < SCR_COLS; ++col) {
         cell_put(col, cur_row, BLANK);
-        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
 }
 
@@ -378,7 +344,6 @@ void scr_erase_chars(unsigned char n)
     }
     for (col = cur_col; col < end; ++col) {
         cell_put(col, cur_row, BLANK);
-        serial_pump(); /* per-cell ACIA drain (see blank_to) */
     }
 }
 
@@ -427,12 +392,10 @@ void scr_clear_bop(void)
     BANK_AUX();
     for (row = 0; row < cur_row; ++row) {
         row_blank_bank(row);
-        serial_pump();
     }
     BANK_MAIN();
     for (row = 0; row < cur_row; ++row) {
         row_blank_bank(row);
-        serial_pump();
     }
     blank_to(cur_row, cur_col); /* partial current row: start..cursor */
 }
@@ -444,12 +407,10 @@ void scr_clear_eop(void)
     BANK_AUX();
     for (row = cur_row + 1; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
-        serial_pump();
     }
     BANK_MAIN();
     for (row = cur_row + 1; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
-        serial_pump();
     }
 }
 
@@ -459,12 +420,10 @@ void scr_clear_all(void)
     BANK_AUX();
     for (row = 0; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
-        serial_pump();
     }
     BANK_MAIN();
     for (row = 0; row < SCR_ROWS; ++row) {
         row_blank_bank(row);
-        serial_pump();
     }
     cur_col = 0;
     cur_row = 0;
@@ -481,7 +440,6 @@ void scr_save_screen(void)
     unsigned char row;
     for (row = 0; row < SCR_ROWS; ++row) {
         read_row_glyphs(row, SAVE_BASE + (unsigned int)row * SCR_COLS);
-        serial_pump(); /* this 1920-byte read is slow; keep RX drained */
     }
     saved_screen_col = cur_col;
     saved_screen_row = cur_row;
@@ -494,7 +452,6 @@ void scr_restore_screen(void)
         unsigned char *s = SAVE_BASE + (unsigned int)row * SCR_COLS;
         for (col = 0; col < SCR_COLS; ++col) {
             cell_put(col, row, s[col]);
-            serial_pump(); /* per-cell ACIA drain (see blank_to) */
         }
     }
     cur_col = saved_screen_col;

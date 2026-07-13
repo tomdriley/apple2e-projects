@@ -28,8 +28,8 @@ that bridge into MAME and asserts what actually renders on the 80×24 screen.
 | Reports | DSR cursor-position report (ESC[6n), primary (ESC[c) and secondary (ESC[>c) Device Attributes |
 | Modes / reset | Application cursor keys (DECCKM), RIS (`ESC c`), DECSTR soft reset |
 | Keyboard | Full ASCII; arrow keys → ESC[A..D (or ESC O A..D in application mode) |
-| Flow control | XON/XOFF plus RX draining during transmit and slow screen operations |
-| Serial | 9600 8N1, Super Serial Card slot auto-detection |
+| Flow control | XON/XOFF with ISR-front-pushed XOFF and queued XON |
+| Serial | 9600 8N1, interrupt-driven RX + TX, Super Serial Card slot auto-detection |
 
 Colors and other unimplemented SGR attributes are parsed and ignored so they
 never corrupt the screen, and OSC/DCS/PM/APC strings are swallowed whole so their
@@ -50,7 +50,8 @@ bootable DOS 3.3 disk image to `build/vt100.dsk`. The disk's greeting program
 hardware alike.
 
 Prerequisites (Windows + Git Bash): `cc65`, `AppleCommander`, `MAME` with the
-`apple2e` ROM set, and the Super Serial Card ROM `a2ssc` (see
+`apple2e` ROM set, and the Super Serial Card ROM `a2ssc`. The MAME launchers
+enable the SSC interrupt switch automatically; set SW2:6 On on real hardware (see
 [docs/SERIAL.md](docs/SERIAL.md)). Adjust the tool paths at the top of the
 [Makefile](Makefile) if yours differ.
 
@@ -101,7 +102,9 @@ not-yet-supported sequences as expected failures. See
 vt100-term-c/
   crt0.s          startup shim (C stack, zero BSS, call _start, exit to DOS)
   monitor.s/.h    hardware address registry (soft switches, I/O, COUT)
-  serial.c/.h     6551 ACIA driver: slot detect, RX ring, XON/XOFF
+  ring.c/.h       shared count-free RX FIFO
+  serial.c/.h     6551 setup, TX ring, XON/XOFF
+  serial_isr.s    shared RX/TX interrupt handler
   screen.h        thin 80×24 screen interface (keeps the parser portable)
   screen80.c      direct-aux 80-column driver + off-screen shadow buffer
   vt100.c/.h      ANSI/VT100 escape-sequence parser (state machine)

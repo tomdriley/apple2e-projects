@@ -27,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import shutil
 import socket
@@ -39,7 +40,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 CLIENT = HERE / "serial_demo.py"
 DISK = ROOT / "build" / "ssc-serial.dsk"
-PORT = 6551
+PORT = int(os.environ.get("MAME_PORT", "6551"))
 PY = sys.executable
 MAME = shutil.which("mame") or r"C:\mame\mame.exe"
 ROMPATH = r"C:\mame\roms"

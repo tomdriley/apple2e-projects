@@ -22,17 +22,17 @@ flowchart LR
     AUX -.read both banks<br/>between frames.-> LUA[screen_watch.lua<br/>test harness]
 ```
 
-- **`term.c`** owns the main loop. Each pass: drain the ACIA into the receive
-  ring (`serial_pump`), feed one received byte to the parser if any is ready,
-  then poll the keyboard and transmit any keystroke.
+- **`term.c`** owns the main loop. Each pass feeds one already-buffered byte to
+  the parser if any is ready, then polls the keyboard and queues any keystroke.
 - **`vt100.c`** is a byte-at-a-time state machine. Printable characters go to the
   screen; escape sequences drive cursor moves, erases, scrolling, and mode
   changes; queries (ESC[6n, ESC[c) are answered back over serial.
 - **`screen80.c`** implements the `screen.h` interface against the IIe's
   interleaved 80-column text page. Tests read that page directly by toggling
   `PAGE2` from MAME's frame notifier while the CPU is paused between frames.
-- **`serial.c`** drives the 6551, auto-detects the Super Serial Card's slot,
-  buffers received bytes in a ring, and applies XON/XOFF flow control.
+- **`serial.c` / `ring.c` / `serial_isr.s`** drive the 6551. C auto-detects the
+  slot and queues TX; the assembly ISR produces the RX ring, consumes the TX
+  ring, and front-pushes XOFF at high water.
 - **`monitor.s/.h`** is just a registry of hardware addresses (soft switches,
   I/O locations, ROM entry points). It emits no code.
 - **`crt0.s`** is the startup shim: set up the cc65 C stack, zero BSS, call
@@ -52,7 +52,7 @@ sequenceDiagram
     CRT0->>TERM: jsr _start
     TERM->>TERM: serial_init(); scr_init(); vt100_init()
     TERM->>TERM: draw banner, send "VT100-BOOT\r\n"
-    TERM->>TERM: loop: pump serial / feed parser / poll keyboard
+    TERM->>TERM: loop: feed buffered RX / poll keyboard
 ```
 
 Making the terminal the DOS 3.3 **greeting program** (via `hello.bas`, which

@@ -5,6 +5,8 @@
 -- The arrow keys are not in the natural-keyboard table, so we press their input
 -- ports directly. Field names are the Unicode arrows, built from bytes here to
 -- avoid any source-encoding surprises.
+dofile("client/ssc_irq.lua")
+
 local LEFT  = string.char(0xE2, 0x86, 0x90) -- U+2190
 local UP    = string.char(0xE2, 0x86, 0x91) -- U+2191
 local RIGHT = string.char(0xE2, 0x86, 0x92) -- U+2192

@@ -8,6 +8,8 @@
 -- MAME wires the Super Serial Card into slot 2, whose 6551 data register is at
 -- $C0A8 ($C088 + slot*16). The firmware auto-detects the slot but resolves to
 -- the same address here.
+dofile("client/ssc_irq.lua")
+
 local OUT  = "build/bench_ticks.txt"
 local DATA = 0xC0A8
 

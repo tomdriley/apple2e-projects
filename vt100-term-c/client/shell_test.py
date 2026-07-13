@@ -38,7 +38,7 @@ ROMPATH = r"C:\mame\roms"
 DISK = str(ROOT / "build" / "vt100.dsk")
 WATCH_LUA = str(HERE / "screen_watch.lua")
 SCREEN = ROOT / "build" / "screen.txt"
-PORT = 6551
+PORT = int(os.environ.get("MAME_PORT", "6551"))
 
 CPR = re.compile(rb"\x1b\[(\d+);(\d+)R")  # cursor-position report from the terminal
 

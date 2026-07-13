@@ -243,7 +243,10 @@ documented issue #24, where synchronous reply gaps corrupted the second query.
 primary-DA queries are each followed immediately by a private CSI and marker byte,
 all inside one transport window, and the case requires every reply and marker with
 no literal CSI residue. Together they cover both wire loss and screen/state
-corruption rather than allowing a timing-dependent pass on cursor state alone. See
+corruption rather than allowing a timing-dependent pass on cursor state alone.
+The division-free report path and absolute TX store remove its local stalls and
+destructive bus read; interrupt-driven RX retains input during arbitrary main-loop
+work, and queued TX preserves complete replies. See
 [docs/SERIAL.md](SERIAL.md#receive-loss-while-replying).
 
 ### What the first run found
