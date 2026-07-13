@@ -86,19 +86,18 @@ static void beep(void)
 
 static void put_dec(unsigned char n)
 {
-    char          buf[3];
-    unsigned char i = 0;
-    if (n == 0) {
-        serial_put('0');
-        return;
+    char tens = '0';
+
+    /* Callers pass screen coordinates (1..80). Avoid cc65's slow division
+     * runtime so RX is serviced again before the next serial byte arrives. */
+    while (n >= 10) {
+        n -= 10;
+        ++tens;
     }
-    while (n != 0) {
-        buf[i++] = (char)('0' + (n % 10));
-        n /= 10;
+    if (tens != '0') {
+        serial_put(tens);
     }
-    while (i != 0) {
-        serial_put(buf[--i]);
-    }
+    serial_put((char)('0' + n));
 }
 
 static void report_cursor(void) /* ESC [ row ; col R  (1-based) */

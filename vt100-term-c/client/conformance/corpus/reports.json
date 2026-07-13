@@ -64,16 +64,16 @@
     "category": "reports",
     "spec_ref": "ECMA-48 DSR CPR; VT100-UG",
     "input": "\\e[10;30H\\e[6n\\e[6n",
-    "status": "unsupported",
+    "status": "supported",
     "basis": "spec",
     "expect": {
       "state": {
         "cur_row": 10,
         "cur_col": 30
       },
-      "report": "\\e[10;30R"
+      "report": "\\e[10;30R\\e[10;30R"
     },
-    "notes": "Documents the back-to-back ESC[6n desync: two ESC[6n with no intervening motion leave the RAM cur_col off by one. Root cause is a genuine 6551 receive-overrun, confirmed with a raw-socket repro that bypasses this harness: when the second ESC[6n overlaps the first CPR's transmission, the firmware's polled RX draining (serial_put only drains while spinning on TDRE, with gaps during put_dec division and the reply return path) fails to read RDR in time, the second request's ESC[6 prefix is overwritten, and the surviving 'n' prints as a glyph -- advancing cur_col. report_cursor() itself only READS the cursor, so the reply path never moves it. A single ESC[6n, or a paced ESC[6n<wait CPR>ESC[6n, are both clean; only the overlapping pair drifts (and loses the second CPR). This is real-hardware class, NOT a MAME artifact. The fix is interrupt-driven RX (retire the receive-overrun class); this stays open until then. Marked unsupported so it scores as a clean XFAIL now and flips to UNEXPECTED_PASS once that work lands -- promote to supported then. NOTE: the reports harness also chunks/paces input with its own ESC[6n, which amplifies the drift seen through the runner but is not the cause."
+    "notes": "Two back-to-back DSR 6 queries must leave the RAM cursor unchanged and return two exact CPR replies. This formerly documented issue #24: synchronous reply gaps corrupted the second query, printed a stray final byte, and lost its reply. The serial_put pre-drain, absolute TDR stores, and division-free coordinate formatting close those gaps. The report-da-overlap-lossless companion independently checks the same receive-while-replying class with primary DA and following private CSI payload."
   },
   {
     "id": "report-dsr-status-ok",
@@ -96,6 +96,38 @@
       "report": "\\e[?1;0c"
     },
     "notes": "Primary DA identifies the terminal as a base VT100."
+  },
+  {
+    "id": "report-da-overlap-lossless",
+    "category": "reports",
+    "spec_ref": "ECMA-48 DA; xterm focus-event mode",
+    "input": "\\e[c\\e[?1004hA\\e[c\\e[?1004hB\\e[c\\e[?1004hC\\e[c\\e[?1004hD\\e[c\\e[?1004hE\\e[c\\e[?1004hF\\e[c\\e[?1004hG",
+    "status": "supported",
+    "basis": "tolerance",
+    "expect": {
+      "cursor": [
+        1,
+        8
+      ],
+      "rows": [
+        [
+          1,
+          1,
+          "ABCDEFG"
+        ]
+      ],
+      "absent": [
+        "1004h",
+        "?1004h",
+        "[?1004h"
+      ],
+      "state": {
+        "cur_row": 1,
+        "cur_col": 8
+      },
+      "report": "\\e[?1;0c\\e[?1;0c\\e[?1;0c\\e[?1;0c\\e[?1;0c\\e[?1;0c\\e[?1;0c"
+    },
+    "notes": "Seven primary-DA queries are each followed immediately by an unsupported private mode and a marker byte in one transport window. Every DA reply and marker must survive while the private CSI is consumed without literal residue. Repetition makes the synchronous-reply RX-loss race deterministic without exceeding the 96-byte pacing window."
   },
   {
     "id": "report-da2-secondary",
