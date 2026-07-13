@@ -409,6 +409,18 @@ void vt100_feed(char ch)
 {
     unsigned char c = (unsigned char)ch & 0x7F;
 
+    /* SO (0x0E, LS1) and SI (0x0F, LS0) are C0 locking shifts. ECMA-48
+     * requires a C0 control to be executed wherever it appears in a non-string
+     * sequence without aborting that sequence, so invoke the shift here for
+     * every state except the string states, where all bytes are swallowed as
+     * payload. The parser state is left unchanged, so an SO/SI embedded
+     * mid-CSI or between ESC( / ESC) and its designator still lets the pending
+     * sequence complete. */
+    if ((c == 0x0E || c == 0x0F) && state != S_STR && state != S_STR_ESC) {
+        active_g1 = (unsigned char)(c == 0x0E);
+        return;
+    }
+
     switch (state) {
     case S_NORMAL:
         if (c == 0x1B) {
@@ -428,10 +440,6 @@ void vt100_feed(char ch)
             beep();
         } else if (c == 0x05) {
             send_answerback(); /* ENQ: return the answerback over the host link */
-        } else if (c == 0x0E) {
-            active_g1 = 1; /* SO / LS1: invoke G1 into GL (locking shift out) */
-        } else if (c == 0x0F) {
-            active_g1 = 0; /* SI / LS0: invoke G0 into GL (locking shift in) */
         } else if (c >= 0x20 && c < 0x7F) {
             scr_put((active_g1 ? g1_special : g0_special) ? dec_graphic(c)
                                                           : (char)c);

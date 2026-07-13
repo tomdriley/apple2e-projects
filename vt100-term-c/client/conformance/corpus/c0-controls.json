@@ -257,5 +257,49 @@
       ]
     },
     "notes": "ESC)0 designates G1 as DEC special graphics; SO invokes G1 (q folds to '-'), then SI (LS0) returns GL to G0 so the next q renders as ASCII 'q'. If SI were ignored, G1 would stay active and the row would read '--'; if SO were also ignored it would read 'qq'. The expected '-q' therefore fails unless SO and SI both switch the active set. basis=profile because the '-' is the IIe fold of DEC line drawing."
+  },
+  {
+    "id": "c0-so-executes-in-csi",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §5.4 C0 in control sequences; §8.3 SO (LS1)",
+    "input": "\\e[2J\\e[1;1H\\e)0\\e[2\\x0eJq",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "-"
+        ]
+      ],
+      "cursor": [
+        1,
+        2
+      ]
+    },
+    "notes": "ESC)0 designates G1 as DEC special graphics. The SO (0x0E) is embedded mid-CSI, inside 'ESC [ 2 <SO> J': per ECMA-48 the C0 control must execute (invoke G1) without aborting the control sequence, so the pending ED (J) still completes with parameter 2 (erase all) and the trailing q then renders through the now-active G1 as the folded '-'. If SO aborted the CSI, 'J' would print literally; if SO were merely consumed as a CSI intermediate (not executed), G0 would stay active and q would render as ASCII 'q'. Either failure mode yields something other than '-', so this case is discriminating for both state preservation and global execution."
+  },
+  {
+    "id": "c0-so-preserves-scs-designation",
+    "category": "c0-controls",
+    "spec_ref": "ECMA-48 §5.4 C0 in escape sequences; §8.3 SO (LS1)",
+    "input": "\\e[2J\\e[1;1H\\e)\\x0e0q",
+    "status": "supported",
+    "basis": "profile",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "-"
+        ]
+      ],
+      "cursor": [
+        1,
+        2
+      ]
+    },
+    "notes": "The SO (0x0E) is embedded inside the G1 charset-designation sequence, between 'ESC )' and its final designator '0'. SO must execute (invoke G1) without aborting the designation, so 'ESC ) <SO> 0' still designates G1 as DEC special graphics and the following q renders through the active G1 as '-'. If SO aborted or was consumed as the designator byte, G1 would stay ASCII, the literal '0' would print, and q would render as ASCII 'q' -> '0q', so the expected '-' fails unless SO executes while preserving the charset-designation state."
   }
 ]
