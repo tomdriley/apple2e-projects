@@ -29,9 +29,10 @@
 
 static unsigned char state;
 static unsigned int  param[MAXPARAM];
-static unsigned char nparam; /* index of the parameter currently being built */
-static unsigned char priv;   /* a private marker ('?') was seen in this CSI */
-static unsigned char csi_gt; /* a '>' or '=' DA marker was seen in this CSI */
+static unsigned char nparam;           /* index of the parameter currently being built */
+static unsigned char priv;             /* a private marker ('?') was seen in this CSI */
+static unsigned char csi_gt;           /* a '>' or '=' DA marker was seen in this CSI */
+static unsigned char csi_intermediate; /* one 0x20-0x2F byte; 0xFF if multiple */
 /* Non-static so the conformance state probe can read them from RAM;
  * exporting them changes no code, only the symbol table. */
 unsigned char        app_cursor;   /* DECCKM: application cursor keys enabled */
@@ -56,9 +57,10 @@ static void reset_params(void)
     for (i = 0; i < MAXPARAM; ++i) {
         param[i] = 0;
     }
-    nparam = 0;
-    priv   = 0;
-    csi_gt = 0;
+    nparam           = 0;
+    priv             = 0;
+    csi_gt           = 0;
+    csi_intermediate = 0;
 }
 
 static unsigned int getp(unsigned char i)
@@ -119,6 +121,21 @@ static void csi_dispatch(unsigned char f)
     unsigned char row = scr_row();
     unsigned char col = scr_col();
     unsigned int  n;
+
+    if (csi_intermediate != 0) {
+        if (csi_intermediate == '!' && f == 'p') {
+            /* DECSTR soft reset: modes/attrs/region, without clearing the screen. */
+            app_cursor   = 0;
+            attr_inverse = 0;
+            g0_special   = 0;
+            scr_set_attr(0);
+            scr_set_cursor_visible(1);
+            scr_set_region(0, SCR_ROWS - 1);
+        }
+        /* Other intermediate sequences, including unsupported DECRQM '$p',
+         * are consumed without aliasing a command with the same final byte. */
+        return;
+    }
 
     switch (f) {
     case 'A': /* cursor up */
@@ -350,14 +367,6 @@ static void csi_dispatch(unsigned char f)
         n = getp(0);
         scr_erase_chars((unsigned char)(n ? n : 1));
         break;
-    case 'p': /* DECSTR soft reset (ESC[!p): modes/attrs/region, no clear */
-        app_cursor   = 0;
-        attr_inverse = 0;
-        g0_special   = 0;
-        scr_set_attr(0);
-        scr_set_cursor_visible(1);
-        scr_set_region(0, SCR_ROWS - 1);
-        break;
     default: /* colors/bold and any unrecognized final byte: ignore */
         break;
     }
@@ -482,11 +491,19 @@ void vt100_feed(char ch)
             priv = 1; /* private-mode marker (e.g. ESC[?25h) */
         } else if (c == '>' || c == '=') {
             csi_gt = c; /* secondary/tertiary DA marker (ESC[>c / ESC[=c) */
+        } else if (c >= 0x20 && c <= 0x2F) {
+            /* Preserve a single CSI intermediate so commands sharing a final
+             * byte (for example DECSTR !p and DECRQM $p) stay distinct. */
+            if (csi_intermediate == 0) {
+                csi_intermediate = c;
+            } else {
+                csi_intermediate = 0xFF; /* multiple intermediates: unsupported */
+            }
         } else if (c >= 0x40 && c <= 0x7E) {
             csi_dispatch(c); /* a final byte: act and return to normal */
             state = S_NORMAL;
         }
-        /* else: an intermediate byte -> consume, stay in CSI */
+        /* else: consume an unsupported parameter/control byte, stay in CSI */
         break;
 
     case S_STR: /* OSC/DCS/PM/APC payload: swallow until ST (ESC \) or BEL */

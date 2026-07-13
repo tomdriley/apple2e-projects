@@ -188,6 +188,41 @@
     "notes": "DECTCEM ?25h re-shows the cursor after ?25l hid it: the firmware sets cursor_visible back to 1 (probed from RAM) and following text still renders. Exercises the show direction from a genuinely hidden state, so it is not degenerate."
   },
   {
+    "id": "mode-dectcem-decrqm-preserves-hidden",
+    "category": "dec-private-modes",
+    "spec_ref": "VT220-RM DECRQM; VT100-UG / DEC-private DECTCEM",
+    "input": "\\e[?25l\\e[?25$pDECRQM-STILL-HIDDEN",
+    "status": "supported",
+    "basis": "spec",
+    "expect": {
+      "rows": [
+        [
+          1,
+          1,
+          "DECRQM-STILL-HIDDEN"
+        ]
+      ],
+      "state": {
+        "cursor_visible": 0
+      }
+    },
+    "notes": "A DECRQM query for DECTCEM is consumed without changing the queried mode. The DECRPM reply remains unsupported; this case specifically guards against confusing the '$p' query with DECSTR 'CSI ! p' and re-showing a hidden cursor."
+  },
+  {
+    "id": "mode-dectcem-decstr-restores-shown",
+    "category": "dec-private-modes",
+    "spec_ref": "VT220-RM DECSTR; VT100-UG / DEC-private DECTCEM",
+    "input": "\\e[?25l\\e[!p",
+    "status": "supported",
+    "basis": "spec",
+    "expect": {
+      "state": {
+        "cursor_visible": 1
+      }
+    },
+    "notes": "DECSTR 'CSI ! p' restores DECTCEM to its visible default after the cursor was explicitly hidden, proving that tracking CSI intermediates does not disable the supported soft reset. This is a firmware-state-only assertion because pyte 0.8.2 does not implement DECSTR."
+  },
+  {
     "id": "mode-irm-set-inserts-printing",
     "category": "dec-private-modes",
     "spec_ref": "ECMA-48 ?8.3.x IRM",
