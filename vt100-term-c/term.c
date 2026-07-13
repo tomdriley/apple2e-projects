@@ -20,9 +20,12 @@ static void scr_puts(const char *s)
 
 static void serial_puts(const char *s)
 {
-    while (*s) {
-        serial_put(*s++);
+    unsigned char len;
+    len = 0;
+    while (s[len] != '\0') {
+        ++len;
     }
+    serial_write(s, len);
 }
 
 /* Send one keystroke to the host, translating the Apple's arrow keys into the
@@ -31,6 +34,7 @@ static void serial_puts(const char *s)
  * not cursor movement. The DELETE key ($7F) still works as backspace. */
 static void send_key(unsigned char c)
 {
+    char seq[3];
     switch (c) {
     case 0x08:
         c = 'D';
@@ -48,11 +52,12 @@ static void send_key(unsigned char c)
         serial_put((char)c);
         return;
     }
-    serial_put(0x1B);
+    seq[0] = 0x1B;
     /* In application-cursor-keys mode (DECCKM) the host wants ESC O x, otherwise
      * the normal ESC [ x. Full-screen apps like vi enable DECCKM. */
-    serial_put(vt100_app_cursor() ? 'O' : '[');
-    serial_put((char)c);
+    seq[1] = vt100_app_cursor() ? 'O' : '[';
+    seq[2] = (char)c;
+    serial_write(seq, sizeof(seq));
 }
 
 /* Idle loop passes to wait through before painting the cursor. The host streams

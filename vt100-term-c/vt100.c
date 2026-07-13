@@ -84,39 +84,41 @@ static void beep(void)
     }
 }
 
-static void put_dec(unsigned char n)
+static unsigned char append_dec(char *out, unsigned char pos, unsigned char n)
 {
     char tens = '0';
 
-    /* Callers pass screen coordinates (1..80). Avoid cc65's slow division
-     * runtime so RX is serviced again before the next serial byte arrives. */
+    /* Callers pass screen coordinates (1..80). Keep formatting bounded and
+     * publish the complete reply before starting an idle transmitter. */
     while (n >= 10) {
         n -= 10;
         ++tens;
     }
     if (tens != '0') {
-        serial_put(tens);
+        out[pos++] = tens;
     }
-    serial_put((char)('0' + n));
+    out[pos++] = (char)('0' + n);
+    return pos;
 }
 
 static void report_cursor(void) /* ESC [ row ; col R  (1-based) */
 {
-    serial_put(0x1B);
-    serial_put('[');
-    put_dec((unsigned char)(scr_row() + 1));
-    serial_put(';');
-    put_dec((unsigned char)(scr_col() + 1));
-    serial_put('R');
+    char          reply[9];
+    unsigned char len;
+    len          = 0;
+    reply[len++] = 0x1B;
+    reply[len++] = '[';
+    len          = append_dec(reply, len, (unsigned char)(scr_row() + 1));
+    reply[len++] = ';';
+    len          = append_dec(reply, len, (unsigned char)(scr_col() + 1));
+    reply[len++] = 'R';
+    serial_write(reply, len);
 }
 
 static void send_answerback(void) /* ENQ (0x05): emit the fixed answerback */
 {
     static const char msg[] = ANSWERBACK;
-    unsigned char     i;
-    for (i = 0; msg[i] != '\0'; ++i) {
-        serial_put(msg[i]);
-    }
+    serial_write(msg, sizeof(msg) - 1);
 }
 
 static void csi_dispatch(unsigned char f)
@@ -249,33 +251,19 @@ static void csi_dispatch(unsigned char f)
         if (n == 6) {
             report_cursor();
         } else if (n == 5) {
-            serial_put(0x1B);
-            serial_put('[');
-            serial_put('0');
-            serial_put('n');
+            static const char ready[] = "\x1B[0n";
+            serial_write(ready, sizeof(ready) - 1);
         }
         break;
     case 'c': /* device attributes */
         if (csi_gt == '>') {
             /* secondary DA (ESC[>c): identify as a VT220-family terminal, version 0 */
-            serial_put(0x1B);
-            serial_put('[');
-            serial_put('>');
-            serial_put('1');
-            serial_put(';');
-            serial_put('0');
-            serial_put(';');
-            serial_put('0');
-            serial_put('c');
+            static const char secondary[] = "\x1B[>1;0;0c";
+            serial_write(secondary, sizeof(secondary) - 1);
         } else if (csi_gt == 0) {
             /* primary DA (ESC[c): identify as a base VT100 */
-            serial_put(0x1B);
-            serial_put('[');
-            serial_put('?');
-            serial_put('1');
-            serial_put(';');
-            serial_put('0');
-            serial_put('c');
+            static const char primary[] = "\x1B[?1;0c";
+            serial_write(primary, sizeof(primary) - 1);
         }
         /* tertiary DA (ESC[=c): consumed silently -- no simple reply exists */
         break;
