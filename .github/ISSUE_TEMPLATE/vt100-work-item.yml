@@ -1,0 +1,150 @@
+name: VT100 project work item
+description: Plan firmware, testing, tooling, documentation, or hardware work
+title: ""
+labels:
+  - vt100-term
+projects:
+  - tomdriley/2
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for work tracked in the [Apple IIe VT100 Terminal project](https://github.com/users/tomdriley/projects/2/views/6).
+
+        GitHub will add the issue to Project #2 automatically when the author has project write access. After filing, copy the requested values below into the project's **Status**, **Priority**, **Size**, and **Parent issue** fields. Complete the remaining planning fields when they apply.
+
+  - type: dropdown
+    id: work-type
+    attributes:
+      label: Work type
+      description: Choose the primary kind of work. Apply the matching bug, enhancement, or documentation label after filing.
+      options:
+        - Firmware feature
+        - Firmware bug
+        - Performance
+        - Testing or conformance
+        - Tooling or CI
+        - Documentation
+        - Physical hardware validation
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: Initial status
+      description: Set the project Status field to this value after filing.
+      options:
+        - Backlog
+        - Ready
+        - In progress
+        - In review
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Set the project Priority field to this value after filing.
+      options:
+        - P0
+        - P1
+        - P2
+      default: 2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: Set the project Size field to this value after filing.
+      options:
+        - XS
+        - S
+        - M
+        - L
+        - XL
+      default: 2
+    validations:
+      required: true
+
+  - type: input
+    id: parent
+    attributes:
+      label: Parent issue or epic
+      description: Enter the parent issue number, usually an epic, or N/A for a top-level item. Set the project Parent issue field after filing.
+      placeholder: "#14, #19, #20, or N/A"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Explain the current behavior, limitation, or opportunity and link related issues, pull requests, evidence, or specifications.
+      placeholder: What exists today, and why should it change?
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: State the user-visible or engineering outcome without prescribing unnecessary implementation details.
+      placeholder: What should be true when this issue is complete?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      description: Break the work into concrete, reviewable steps.
+      placeholder: |
+        - [ ] Implement the focused change.
+        - [ ] Add discriminating coverage.
+        - [ ] Update directly affected documentation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List measurable completion conditions. Firmware changes must include the required real-ROM MAME gate.
+      placeholder: |
+        - The new behavior is observable and covered by a regression test.
+        - Existing behavior remains unchanged outside the stated scope.
+        - The relevant build, host checks, and real-ROM MAME tests pass.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Record dependencies, tradeoffs, deferred work, hardware requirements, or follow-up relationships.
+      placeholder: "Part of #...; follow-up from #... / PR #..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: project-metadata
+    attributes:
+      label: Project metadata checklist
+      description: Leave this checklist in the issue and complete it after filing.
+      value: |
+        - [ ] Confirmed the issue appears in the [Apple IIe VT100 Terminal project](https://github.com/users/tomdriley/projects/2/views/6).
+        - [ ] Set **Status** to the selected initial status.
+        - [ ] Set **Priority** to the selected priority.
+        - [ ] Set **Size** to the selected size.
+        - [ ] Set **Parent issue** to the parent epic/issue above, or confirmed this is a top-level item.
+        - [ ] Applied the appropriate bug, enhancement, or documentation label.
+        - [ ] Set Assignee, Milestone, Estimate, Start date, and Target date when applicable.
+    validations:
+      required: true
