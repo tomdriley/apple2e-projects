@@ -172,15 +172,13 @@ Reading the numbers:
 
 ### Cost of removal: two re-exposed ACIA overruns
 
-Removing the shadow shifted the cc65-compiled timing of the render loops, which
-re-exposed two thin receive-overrun margins in the polled, single-byte-RX 6551
-path (see [docs/LESSONS.md](LESSONS.md)). Both were fixed by draining the ACIA
-more often: `read_row_glyphs` pumps every 8 cells during a row read-back, and the
-per-cell bank-switching loops (`blank_to`, `row_blank_from`, `scr_erase_chars`,
-`scr_insert_chars`, `scr_delete_chars`, and the alternate-screen `scr_restore_screen`
-redraw) now pump after every cell. These pumps are off the hot scroll path, so
-they do not dent the scroll numbers above (they are the reason `altscreen` gains
-less than the rest).
+Removing the shadow shifted the cc65-compiled timing of the render loops and
+historically re-exposed two thin receive-overrun margins in the old polled path
+(see [LESSONS.md](LESSONS.md)). The per-row and per-cell pumps added at that time
+remain as a fallback and flow-control service. RX is now interrupt-driven, so
+correctness no longer depends on every render loop staying within one 9600-baud
+byte time. These pumps are off the hot scroll path and do not dent the numbers
+above.
 
 ## Reproducing
 

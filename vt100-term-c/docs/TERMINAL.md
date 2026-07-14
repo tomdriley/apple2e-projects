@@ -102,7 +102,7 @@ operate within the cursor's row.
 
 | Sequence | Name | Reply / effect |
 |----------|------|--------|
-| `ESC [ 6 n` | DSR | Sends `ESC [ row ; col R` (used heavily by the test suite). Reporting only *reads* the cursor, so the reply path itself never moves `cur_col`/`cur_row`. Known limitation: two `ESC[6n` back to back with no intervening motion can still leave RAM `cur_col` off by one, because the second request overlaps the first CPR's transmission and is lost to a 6551 receive-overrun (tracked to land with the interrupt-driven RX work). |
+| `ESC [ 6 n` | DSR | Sends `ESC [ row ; col R` (used heavily by the test suite). Reporting only *reads* the cursor, so the reply path never moves `cur_col`/`cur_row`; back-to-back requests return two exact replies. |
 | `ESC [ 5 n` | DSR | Sends `ESC [ 0 n` (terminal OK) |
 | `ESC [ c` | Primary DA | Sends `ESC [ ? 1 ; 0 c` (identify as a VT100) |
 | `ESC [ > c` | Secondary DA | Sends `ESC [ > 1 ; 0 ; 0 c` (VT220-family, version 0) |

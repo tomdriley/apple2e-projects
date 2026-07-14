@@ -36,8 +36,9 @@ about a millisecond, and two things kept violating that:
    next bytes overran the register, leaving escape-sequence fragments like `04h`
    on screen. Fix: drain RX inside `serial_put()`'s transmit-wait loop.
 
-The lesson: **any** code path that can hold the CPU for a byte time must keep the
-receiver drained. Both fixes are just that, in different places.
+The polling-era lesson was: **any** code path that can hold the CPU for a byte
+time must keep the receiver drained. Both fixes were just that, in different
+places.
 
 A third instance showed up later under sustained scrolling: blanking the new
 bottom row of the shadow buffer after each scroll is a ~0.9 ms loop, and the byte
@@ -68,6 +69,30 @@ to stay under a byte time. Removing the shadow shifted that compiled timing just
 enough to cross the line — the render change and the serial bug were coupled
 through raw cycle count.
 
+Those pump additions were useful mitigations, but they also exposed the
+architectural problem: correctness depended on finding every one-millisecond
+gap forever. Report TX later needed three more narrow fixes (pre-drain before
+TDRE, absolute TDR stores to avoid the NMOS dummy read, and division-free CPR
+formatting). They made back-to-back `ESC[6n` deterministic, but a deliberate
+no-pump delay such as BEL still dropped an incoming burst.
+
+The durable fix is **receiver interrupt, transmitter polling**:
+
+- command `$09` enables only the 6551 RX interrupt; physical SSC SW2:6 must be On;
+- a pure-assembly Monitor handler reads RDR before doing ring bookkeeping;
+- it calls only the assembly ring producer, never C under `-Cl`;
+- status polling masks IRQ and captures RDR, because any status read clears the
+  interrupt latch;
+- foreign IRQs restore exact Monitor-entry A/P/X/Y and chain to the prior vector;
+- Ctrl-Reset and normal exit disable the card and restore IRQLOC, SOFTEV/PWREDUP,
+  and the prior ACIA configuration.
+
+The screen-bank interaction turned out simpler than toggling `PAGE2` in the ISR.
+With 80STORE, `PAGE2` affects only `$0400-$07FF`; the program and RX state live
+above `$0800`. Linker assertions enforce that invariant, so an interrupt can run
+while AUX is selected without touching the switch or disturbing the interrupted
+screen operation.
+
 ## The ring's "full" guard that never fired
 
 The overrun fixes above lean on the 256-byte RX ring to soak up bursts. But the
@@ -85,7 +110,7 @@ into it.
 The obvious quick fix is to widen `r_count` to `unsigned` and compare
 `r_count < RING_SIZE` — that detects full and silences the warnings. But it leaves
 a 16-bit occupancy counter that is *redundant* with the head/tail pointers and,
-being multi-byte, is not read or written atomically — a wart for the planned
+being multi-byte, is not read or written atomically — a wart for the
 interrupt-driven RX path. The shipped fix instead **drops the counter entirely**
 and derives the state from the two pointers, the way a hardware FIFO does:
 
@@ -107,11 +132,12 @@ dropping to 255 would force a modulo-255 or a wrap branch on every push and pop 
 more hot-path code than the one unused byte a sentinel costs.
 
 The pointer-compare ring is also smaller and faster than the counter version at the
-6502 level: no `inc low / bne / inc high` counter upkeep, an absolute-indexed store
-instead of building a zero-page pointer, and a single-byte threshold compare (the
-firmware image even shrank a few bytes). Because each pointer has exactly one
-writer, the single-producer/single-consumer split is lock-free — the natural shape
-for interrupt-driven RX.
+6502 level: no `inc low / bne / inc high` counter upkeep, an absolute-indexed
+store instead of building a zero-page pointer, and a single-byte threshold
+compare. The ISR owns head and main owns tail. Assembly push stores data before
+publishing head; pop reads data before publishing tail. A full ring drops the
+newest byte, preserves all queued data, and increments a saturating telemetry
+byte.
 
 The lesson: **an occupancy counter is redundant with the pointers, and redundant
 state is somewhere for a bug to hide** — here, a counter too narrow to represent a
@@ -132,13 +158,13 @@ would need to bypass flow control and race the drain loop, which the harness wil
 not do. The full/empty logic is therefore covered instead by (1) the cc65 warning's
 disappearance (the old always-true comparison is gone), (2) the existing ROM-backed
 MAME conformance gate (proves the ring rework didn't regress normal receive), and
-(3) a ROM-free host unit test (`make test`, see [docs/TESTING.md](TESTING.md)) that
-drives the ring past capacity directly and asserts FIFO integrity — including full
-detection via `(head + 1) == tail` — with no lost or overwritten bytes. Accepting
-the absent corpus test is a deliberate, recorded deviation, not an oversight. The
-ring now lives in its own module (`ring.{c,h}`) that the unit test **links
-directly** rather than mirrors, so the test can never drift from shipped behavior;
-that shared seam also matters for the interrupt-driven RX path.
+(3) a ROM-free host unit test (`make test`, see [TESTING.md](TESTING.md)) that
+drives the ring past capacity and asserts full detection, retained-byte FIFO
+integrity, wraparound, drop-newest counting/saturation, and reset. The test links
+the production `ring.c` storage and `ring_io.s` operations rather than mirroring
+them. Accepting the absent corpus overflow test is deliberate: the timed
+ROM-backed IRQ test covers actual ISR publication, while sim65 covers the
+otherwise hard-to-force full/drop boundary.
 
 ## Memory-mapped I/O must be `volatile`
 
@@ -146,6 +172,13 @@ An early version cached the 6551 status register because the pointer wasn't
 `volatile`; with `-O`, cc65 read it once and spun forever. MMIO pointers and
 soft-switch reads in loops must be `volatile` so every access is a real bus
 cycle.
+
+Interrupt RX adds a second rule: **a real bus cycle can itself be destructive**.
+Reading 6551 status clears the IRQ latch, and an indirect-indexed TDR store
+dummy-reads RDR first on the NMOS 6502. Runtime status access therefore lives in
+IRQ-masked assembly, and TX uses slot-specific absolute stores. `volatile` is
+necessary, but it is not enough to make the wrong addressing mode or an
+unserialized status read safe.
 
 ## The shadow buffer, and why it is gone
 

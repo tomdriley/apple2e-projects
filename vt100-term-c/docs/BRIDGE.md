@@ -86,8 +86,11 @@ firmware provides — and nothing it does not.
 
 1. Transfer `build/vt100.dsk` to a physical disk (e.g. with ADTPro) or run it
    from a disk emulator.
-2. Boot the IIe; the greeting program `BRUN`s the terminal automatically.
-3. Wire a USB/RS-232 adapter to the Super Serial Card and run
+2. With power off, set the Super Serial Card's **SW2:6 Interrupts switch On**.
+3. Boot the IIe; the greeting program `BRUN`s the terminal automatically.
+4. Wire a USB/RS-232 adapter to the Super Serial Card and run
    `python client/vt100_shell.py serial` on the PC.
 
-The firmware is identical to the MAME build — only the transport differs.
+The firmware is identical to the MAME build — only the transport differs. The
+interrupt path is verified under real-ROM MAME but has not yet been validated
+on a physical IIe/SSC.

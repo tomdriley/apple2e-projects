@@ -8,8 +8,8 @@ real **WSL bash** session to the terminal, and an automated test suite drives
 that bridge into MAME and asserts what actually renders on the 80×24 screen.
 
 ```
-   WSL bash  ──pty──▶  Python bridge  ──socket/serial──▶  6551  ──▶  VT100 parser  ──▶  80-col screen
-   (Linux)            (pywinpty)         (null modem)      ACIA       (vt100.c)          (screen80.c)
+   WSL bash  ──pty──▶  Python bridge  ──socket/serial──▶  6551 IRQ  ──▶  RX ring  ──▶  VT100 parser
+   (Linux)            (pywinpty)         (null modem)       ACIA         (255 B)       (vt100.c)
 ```
 
 ## Features
@@ -28,8 +28,8 @@ that bridge into MAME and asserts what actually renders on the 80×24 screen.
 | Reports | DSR cursor-position report (ESC[6n), primary (ESC[c) and secondary (ESC[>c) Device Attributes |
 | Modes / reset | Application cursor keys (DECCKM), RIS (`ESC c`), DECSTR soft reset |
 | Keyboard | Full ASCII; arrow keys → ESC[A..D (or ESC O A..D in application mode) |
-| Flow control | XON/XOFF plus RX draining during transmit and slow screen operations |
-| Serial | 9600 8N1, Super Serial Card slot auto-detection |
+| Flow control | Interrupt-driven RX into a 255-byte FIFO, plus XON/XOFF |
+| Serial | 9600 8N1, RX IRQ / polled TX, Super Serial Card slot auto-detection |
 
 Colors and other unimplemented SGR attributes are parsed and ignored so they
 never corrupt the screen, and OSC/DCS/PM/APC strings are swallowed whole so their
@@ -53,6 +53,10 @@ Prerequisites (Windows + Git Bash): `cc65`, `AppleCommander`, `MAME` with the
 `apple2e` ROM set, and the Super Serial Card ROM `a2ssc` (see
 [docs/SERIAL.md](docs/SERIAL.md)). Adjust the tool paths at the top of the
 [Makefile](Makefile) if yours differ.
+
+Receiver interrupts also require the Super Serial Card's **SW2:6 Interrupts
+switch On**. The MAME launchers set the modeled switch automatically; set the
+physical switch before booting on an Apple IIe.
 
 ### Run in MAME with a demo host
 
@@ -85,6 +89,8 @@ The Apple becomes a login console for Linux. On real hardware, use
 .venv/Scripts/python.exe client/vt100_test.py --keys     # keyboard → serial
 .venv/Scripts/python.exe client/vt100_test.py --keys --app  # application cursor keys
 .venv/Scripts/python.exe client/shell_test.py            # real WSL bash → screen render
+.venv/Scripts/python.exe client/irq_lifecycle_test.py     # IRQ chain + Ctrl-Reset cleanup
+.venv/Scripts/python.exe client/irq_rx_test.py            # RX during no-pump CPU work
 .venv/Scripts/python.exe client/conformance/runner.py --target mame  # spec conformance corpus
 ```
 
@@ -101,7 +107,10 @@ not-yet-supported sequences as expected failures. See
 vt100-term-c/
   crt0.s          startup shim (C stack, zero BSS, call _start, exit to DOS)
   monitor.s/.h    hardware address registry (soft switches, I/O, COUT)
-  serial.c/.h     6551 ACIA driver: slot detect, RX ring, XON/XOFF
+  serial.c/.h     6551 main-line driver: slot detect, polled TX, XON/XOFF
+  serial_irq.s    RX ISR, safe status reads, IRQ/reset-vector lifecycle
+  ring.c/.h       RX FIFO storage and main-line state helpers
+  ring_io.s       ordered assembly FIFO push/pop operations
   screen.h        thin 80×24 screen interface (keeps the parser portable)
   screen80.c      direct-aux 80-column driver + off-screen shadow buffer
   vt100.c/.h      ANSI/VT100 escape-sequence parser (state machine)

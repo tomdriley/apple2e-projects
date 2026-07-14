@@ -17,17 +17,19 @@ discipline lives in [serial.c](../serial.c); the query replies live in
 
 | Parameter | Value | Source |
 |-----------|-------|--------|
-| Baud | 9600 | `CTRL_9600_8N1 = 0x1E` written to the 6551 control register |
+| Baud | 9600 | `ACIA_CONTROL_9600 = 0x1E` written to the 6551 control register |
 | Data bits | 8 | same control byte |
-| Parity | none | `CMD_NO_PARITY = 0x0B` (command register) |
+| Parity | none | `ACIA_COMMAND_RX_IRQ = 0x09` (command register) |
 | Stop bits | 1 | control byte |
-| Modem lines | DTR + RTS asserted, held static | command byte `0x0B` |
+| Modem lines | DTR + RTS asserted, held static | command byte `0x09` |
+| Receive IRQ gate | enabled | Super Serial Card switch **SW2:6 On** |
 
-So the line is **9600 8N1**. DTR and RTS are asserted once at init and never
-toggled — there is **no hardware (RTS/CTS) flow control**; pacing is purely
-software XON/XOFF (§3). The 6551 ACIA sits on a Super Serial Card whose slot is
-auto-detected (see [SERIAL.md](SERIAL.md)); slot detection is invisible on the
-wire.
+So the line is **9600 8N1**. DTR and RTS are asserted during the terminal run;
+there is **no hardware (RTS/CTS) flow control**, so pacing is software XON/XOFF
+(§3). The command byte enables the 6551 receiver interrupt, and the card's
+external SW2:6 gate must also be On. The ACIA slot is auto-detected (see
+[SERIAL.md](SERIAL.md)); slot detection and interrupt handling are invisible on
+the wire.
 
 ## 2. Framing
 
@@ -46,9 +48,9 @@ per the VT100 rules documented in [TERMINAL.md](TERMINAL.md).
 
 ## 3. Flow control (XON/XOFF) — one direction
 
-Flow control exists so the host does not overrun the 6551, which buffers **exactly
-one** received byte (~1 ms at 9600 baud). The firmware keeps a 256-byte receive
-ring and throttles the host with the standard control bytes:
+The RX interrupt moves each byte out of the 6551's one-byte register (~1 ms per
+byte at 9600 baud) into a 256-slot sentinel ring with 255 usable bytes. Flow
+control keeps that software FIFO from filling:
 
 | Byte | Value | Meaning on this wire |
 |------|-------|----------------------|

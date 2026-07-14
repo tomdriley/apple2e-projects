@@ -95,13 +95,16 @@ saving the screen for the alternate-screen buffer. The test harness uses the
 same idea externally, reading both banks between MAME frames; see
 [docs/TESTING.md](TESTING.md).
 
-## The overrun hazard
+## Interrupt safety while PAGE2 is selected
 
-At 9600 baud a byte arrives roughly every millisecond, but the 6551 has only a
-one-byte receive register. Removing the separate screen copy re-exposed thin
-timing margins in the slow paths. Single-bank row fills and copies pump
-periodically, `read_row_glyphs()` pumps every 8 cells, and per-cell
-bank-switching erase/shift loops pump after every cell. Each `cell_put()` flips
-`PAGE2` and is slow enough in cc65 that even a short erase can otherwise drop
-the byte that follows an escape sequence. This subtlety is documented in
-[docs/SERIAL.md](SERIAL.md) and [docs/LESSONS.md](LESSONS.md).
+Screen operations can be interrupted between selecting AUX with `$C055` and
+restoring MAIN with `$C054`. The RX ISR deliberately leaves `PAGE2` untouched:
+with 80STORE active, `PAGE2` banks only `$0400-$07FF`, while the handler, ring,
+indices, and telemetry are all at `$0800` or above. Link-time assertions in
+`serial_irq.s` enforce that invariant. The interrupted screen operation resumes
+with exactly the bank it selected.
+
+The existing `serial_pump()` calls remain in slow row and per-cell loops. They
+provide a safe polling fallback and let main-line code evaluate XON/XOFF, but
+the one-byte RDR is protected by the ISR rather than by a fragile per-cell
+timing budget. See [SERIAL.md](SERIAL.md) and [LESSONS.md](LESSONS.md).

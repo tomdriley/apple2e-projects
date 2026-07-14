@@ -15,7 +15,8 @@ Most sequences are a few lines in the CSI dispatcher.
    with `getp(n)` (returns 0 if absent; apply the sequence's default). The
    `priv` flag is set when the CSI had a `?`.
 3. **Answer queries** (if it's a report) by calling `serial_put()`. Replies are
-   several bytes — that's fine, `serial_put()` keeps RX drained while it sends.
+   several bytes — RX interrupts remain active while polled TX waits, and the
+   status helper safely captures any byte already in RDR.
 4. **Add a test** ([docs/TESTING.md](TESTING.md)): a cursor test if the effect is
    observable via `ESC[6n`, or a shell/`printf` render test otherwise.
 5. `make` and run the suites.
@@ -38,10 +39,12 @@ The reusable primitives in `screen80.c`:
 - `blank_to(row, to)` / `row_blank_from(row, from)` — blank a span of a row.
 - `region_up(top, bot)` / `region_down(top, bot)` — scroll a row range one line.
 
-Any loop that can run longer than ~1 ms must call `serial_pump()` so the 6551
-doesn't overrun. Single-bank row loops pump every 8 cells; per-cell
-bank-switching loops that use `cell_put()` must pump after every cell. When you
-shift cells within a row, read the source glyphs from the video page with
+The existing slow loops retain `serial_pump()` calls. RX IRQ now protects the
+one-byte 6551 register, but pumping during long work still provides the
+IRQ-disabled fallback and gives main context a chance to send XOFF before the
+software ring fills. New long-running loops should service `serial_pump()`
+periodically; they no longer need a fragile per-byte-time cadence. When you shift
+cells within a row, read the source glyphs from the video page with
 `read_row_glyphs(row, buf)` into a local buffer, then shift.
 
 ## The visible cursor is an overlay — keep it off-screen during work
@@ -61,15 +64,16 @@ and strip the overlay from its read-back.
 
 ## cc65 conventions that matter
 
-- **Memory-mapped I/O must be `volatile`.** The 6551 pointer is
-  `volatile unsigned char *`; without it, `-O` caches reads of the status
-  register and the driver hangs or misbehaves. Same for any soft switch you read
-  in a loop. Do not write the 6551 data register through that dynamic pointer:
+- **Memory-mapped I/O must be `volatile`.** The slot-detection pointer and soft
+  switches are volatile. After IRQ installation, all 6551 status reads go through
+  `serial_irq.s`: a status read clears the IRQ latch, so C must not read it behind
+  the handler's back. Do not write the data register through the dynamic pointer:
   cc65 emits `STA (zp),Y`, whose NMOS 6502 dummy read consumes RDR before writing
   TDR. Use `serial.c`'s slot-specific volatile absolute `write_tdr()` stores.
 - **`-Cl` static locals.** The build uses statically allocated locals for smaller,
-  faster code. This is only safe because nothing is reentrant. Do **not** add
-  recursion or interrupt handlers without revisiting this.
+  faster code. Main-line C is non-reentrant; the RX ISR is pure assembly and
+  calls no C or cc65 runtime helper. Do **not** add recursion or call C from an
+  interrupt handler.
 - **C89 declarations.** cc65 wants declarations at the top of a block. Declaring a
   variable mid-block, or after a statement, is a compile error.
 - **Definition order.** A `static` function must be defined (or forward-declared)
@@ -82,12 +86,28 @@ and strip the overlay from its read-back.
   output. Reading it is the reliable way to judge a hot loop's cycle cost — that's
   how the every-8-cells pump interval was chosen.
 
+## IRQ handler conventions
+
+- Apple Monitor IRQ dispatch saves interrupted A at `$45` and jumps through
+  `IRQLOC` (`$03FE/$03FF`). Preserve the Monitor-dispatch A/P and interrupted X/Y
+  exactly before chaining a foreign IRQ; handled IRQs reload A from `$45` before
+  `RTI`.
+- The ISR must stay in assembly, avoid cc65 zero-page temporaries, and never call
+  C under `-Cl`. `ring_io.s` is the only callable producer seam.
+- Status reads are destructive to the 6551 IRQ latch. Main context must use
+  `serial_irq_status()`, which masks IRQ around status/RDR/enqueue.
+- The ISR must not toggle `PAGE2`. With 80STORE, only `$0400-$07FF` is banked;
+  linker assertions keep every IRQ-touched object at or above `$0800`.
+- Install the Ctrl-Reset cleanup hook before `IRQLOC`, enable the 6551 interrupt
+  last, and restore ACIA/vectors before returning to DOS. Do not bypass
+  `serial_irq_shutdown()` from a new exit path.
+
 ## Change the baud rate
 
-Set the control-register value in [serial.c](../serial.c) (`CTRL_9600_8N1 =
-0x1E`) to the 6551 code for the new rate, and match it on the host side (the
-Python clients default to 9600). Faster rates make full-screen redraws snappier
-but tighten the overrun margins — keep flow control on.
+Set `ACIA_CONTROL_9600` in [serial_irq.s](../serial_irq.s) to the 6551 code for
+the new rate, and match it on the host side (the Python clients default to
+9600). Faster rates fill the software ring sooner — keep flow control on and
+retest the timed IRQ receive case.
 
 ## Change the screen size
 

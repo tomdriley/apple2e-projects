@@ -7,28 +7,30 @@ logic that a boot test cannot observe:
 
 | Harness | Verifies | How |
 |---------|----------|-----|
+| `client/irq_rx_test.py` | IRQ-only receive during a no-pump CPU delay | Sends BEL, waits for `beep()`, then requires an exact marker and IRQ telemetry |
+| `client/irq_lifecycle_test.py` | IRQ chaining and Ctrl-Reset teardown | Raises a foreign slot IRQ, then checks vectors and ACIA state after reset |
 | `client/vt100_test.py` | Cursor motion, keyboard | The terminal's own position reports and transmitted bytes |
 | `client/shell_test.py` | Rendered screen from real shell output | A snapshot of the 80×24 screen |
 | `client/conformance/runner.py` | Spec conformance across the VT100/ECMA-48 feature space | A spec-derived corpus graded by video-RAM, state-variable, and wire probes |
-| `tests/ring_test.c` (`make test`) | 6551 RX ring FIFO integrity under overflow | Compiled with cc65's `sim6502` target and run on the host under `sim65` — no ROMs, MAME, or serial socket |
+| `tests/ring_test.c` (`make test`) | RX FIFO full/wrap/drop behavior | Production `ring.c` + `ring_io.s` under cc65 sim6502/sim65; no ROMs or MAME |
 
 The ring unit test exists because the RX ring-full bug is a
 buffer-overflow/type defect that a conformance corpus case cannot reliably
 observe — flow control (XON/XOFF) normally keeps the ring from ever filling. It
 **links the real ring module** (`ring.c`, shared with `serial.c`) rather than a
 hand-copied mirror, drives the count-free, sentinel-slot FIFO past its 255-byte
-capacity, and asserts that full is detected (`(head + 1) == tail`) with no bytes
-lost or overwritten; it also runs a local model of the original counter-based
-logic to prove the checks have teeth. Because the test and the firmware compile
-the same `ring.c`, the ring can no longer drift out of sync with shipped
-behavior.
+capacity, and asserts that full is detected (`(head + 1) == tail`), the newest
+overflow bytes are rejected without overwriting retained FIFO contents, drop
+telemetry saturates, and wrap preserves order. It also runs a local model of the
+original counter bug to prove the checks have teeth. The test links the same
+`ring.c` storage/helpers and `ring_io.s` operations as the firmware.
 
 ## Continuous integration & reproducible toolchain
 
-Every harness above runs in **GitHub Actions** on each push and pull request, and
-the *same* toolchain powers local containers, Codespaces, and the Copilot cloud
-agent — so **dev == CI == agent**. One pinned, idempotent installer is the single
-source of truth:
+The portable checks, IRQ-specific ROM gates, and full MAME conformance suite run
+in **GitHub Actions** on each push and pull request. The same toolchain powers
+local containers, Codespaces, and the Copilot cloud agent, so **dev == CI ==
+agent**. One pinned, idempotent installer is the single source of truth:
 
 - [`scripts/setup-toolchain.sh`](../../scripts/setup-toolchain.sh) installs the
   **pinned** cc65 (built from source at commit `cc3c40c54`), MAME, a JRE +
@@ -56,7 +58,7 @@ runs both:
 | Job | ROMs? | What it does |
 |-----|-------|--------------|
 | `hermetic-checks` | no | builds `VT100.BIN` with the pinned cc65 and runs `selftest.py` + `oracle.py --audit` + the `make test` ring unit test. A fast, portable pre-check that runs on **every** push/PR, including fork PRs. |
-| `mame-conformance` | yes | boots the firmware in headless MAME against the **actual Apple IIe ROMs** and runs the full `runner.py --target mame` suite; uploads `build/conformance.json` + failing-screen artifacts. This is the firmware regression gate. |
+| `mame-conformance` | yes | boots against the **actual Apple IIe ROMs**; proves IRQ chaining/Ctrl-Reset cleanup, runs the no-pump RX regression, then runs full `runner.py --target mame`; uploads probe artifacts. |
 
 `mame-conformance` fails the build on any REGRESSION or ERROR (not yet `--strict`).
 
@@ -120,6 +122,35 @@ docker run --rm -it -v "$PWD:/work" -w /work/vt100-term-c \
   apple2e-toolchain \
   bash -lc 'make && python3 client/conformance/runner.py --target mame'
 ```
+
+## IRQ-specific tests
+
+Use a unique local port when multiple worktrees may run MAME:
+
+```sh
+MAME_PORT=6571 python client/irq_lifecycle_test.py
+MAME_PORT=6571 python client/irq_rx_test.py --runs 20
+MAME_PORT=6571 python client/conformance/runner.py --target mame -k report-da-overlap-lossless
+MAME_PORT=6571 python client/conformance/runner.py --target mame -k report-cpr-6n-idempotent
+MAME_PORT=6571 python client/shell_test.py -k wrap
+```
+
+Each `irq_rx_test.py --runs N` iteration creates a fresh MAME boot. The test sends
+BEL by itself, waits 40 ms so firmware enters `beep()`'s deliberate no-pump
+delay, then sends a distinctive marker. Polling-only firmware loses most of the
+marker; IRQ firmware must render all bytes at the exact cursor position with
+`serial_irq_active=1`, `serial_irq_seen=1`, and no ring drops.
+
+The lifecycle probe installs a Mockingboard in slot 1 and starts its 6522 VIA
+Timer 1 IRQ. That is a real non-SSC Apple II bus interrupt: the test requires
+the saved handler to run. It then holds Control+Reset and verifies that IRQLOC,
+SOFTEV/PWREDUP, command/control, and active state are restored before DOS
+resumes.
+
+Every MAME Lua probe loads `client/ssc_irq.lua`, which turns the modeled SSC
+**SW2:6 Interrupts** switch On and errors if MAME does not expose it. Python
+harnesses use `MAME_PORT`; `make run`/`make debug` use
+`SERIAL_PORT=6571`.
 
 ## Cursor tests — `vt100_test.py`
 
@@ -278,10 +309,9 @@ It checks that `serial_link` imports without `pyserial`/`pywinpty`, that
 (`PtyLink`) round-trips `write()` / non-blocking `read(n)` over a real loopback
 PTY (run on Linux/macOS; skipped on Windows, which has no PTYs). It also
 cross-checks [docs/PROTOCOL.md](PROTOCOL.md) against the real firmware — the line
-settings, XON/XOFF thresholds, and query replies it documents must match the
-literals in `serial.c` / `vt100.c`, and the CPR regex / `ESC[?1;0c` literal the
-doc hands a host implementer must actually parse the firmware's replies — so the
-protocol doc can't drift into fiction.
+settings, XON/XOFF thresholds, and query replies must match literals in
+`serial_irq.s` / `serial.c` / `vt100.c`, and the CPR regex / `ESC[?1;0c` literal
+must parse the firmware's replies.
 
 ### Reference oracle — `conformance/oracle.py`
 
@@ -334,7 +364,8 @@ dump.
 
 ## Requirements
 
-- The `a2ssc` ROM and `-aux ext80` (see [docs/SERIAL.md](SERIAL.md)).
+- The `a2ssc` ROM, `-aux ext80`, and SSC SW2:6 On (the Lua probes set the MAME
+  switch automatically; see [SERIAL.md](SERIAL.md)).
 - `shell_test.py` additionally needs a working `wsl.exe` default distro and
   `pywinpty` in the Python environment. It warms up WSL (`bash -c true`) before
   timing anything, because the first WSL call cold-starts for a few seconds.
@@ -346,7 +377,7 @@ dump.
 
 The DSR cursor tests also run against a physical Apple IIe over the Super Serial
 Card — no MAME, no bash. Boot the `vt100.dsk` disk on the Apple, wire a USB/RS-232
-adapter to the card, then:
+adapter to the card, and set **SW2:6 On**, then:
 
 ```sh
 python client/vt100_test.py --serial            # auto-detect the port
@@ -356,7 +387,9 @@ python client/vt100_test.py --serial --device COM3 --baud 9600
 It handshakes with the terminal (`ESC[6n`), then runs the full cursor suite and
 reports pass/fail exactly like the MAME run. `--keys` cannot run this way (it
 relies on MAME key injection); verify the keyboard by typing on the Apple with
-the interactive bridge (see [docs/BRIDGE.md](BRIDGE.md)).
+the interactive bridge (see [docs/BRIDGE.md](BRIDGE.md)). The IRQ change itself
+has not yet been validated on a physical IIe/SSC; do not treat the MAME result as
+a physical-hardware claim.
 
 ## Adding a test
 

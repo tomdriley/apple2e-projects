@@ -243,8 +243,10 @@ documented issue #24, where synchronous reply gaps corrupted the second query.
 primary-DA queries are each followed immediately by a private CSI and marker byte,
 all inside one transport window, and the case requires every reply and marker with
 no literal CSI residue. Together they cover both wire loss and screen/state
-corruption rather than allowing a timing-dependent pass on cursor state alone. See
-[docs/SERIAL.md](SERIAL.md#receive-loss-while-replying).
+corruption rather than allowing a timing-dependent pass on cursor state alone.
+The separate `irq_rx_test.py` BEL-delay case is the discriminating proof that RX
+survives arbitrary no-pump CPU work, not only the report-specific fast paths.
+See [docs/SERIAL.md](SERIAL.md#receive-overrun-history-and-regressions).
 
 ### What the first run found
 
