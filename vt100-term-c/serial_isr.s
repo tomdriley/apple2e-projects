@@ -22,6 +22,7 @@
 
         .export _serial_isr_install, _serial_isr_remove, _irq_off, _irq_on
         .export _serial_old_irq, _serial_chain_valid, _serial_isr_installed
+        .export _serial_isr_entry, _serial_chain_target, _serial_tx_data_store
         .import _rx_ring, _r_head, _r_tail
         .import _tx_ring, _t_head, _t_tail
         .import _xoff_sent, _tx_irq_active
@@ -138,6 +139,7 @@ _irq_on:
 ; --- the interrupt handler -------------------------------------------------
 ; Entered via JMP (IRQVEC); the monitor has already stashed A at $45. X and Y are
 ; saved here; A is restored from $45 on exit, then RTI.
+_serial_isr_entry:
 serial_isr:
         php                     ; preserve live entry flags for a chained handler
         txa
@@ -226,6 +228,7 @@ tx_send:
         ; the ACIA data register that read clears RDRF and can silently consume a
         ; byte which completed after our status sample. This absolute operand is
         ; patched by serial_isr_install for the detected SSC slot.
+_serial_tx_data_store:
 tx_data_store:
         sta     $ffff           ; write the data register (clears TDRE)
         inx
@@ -249,6 +252,7 @@ dispatch_done:
         tax                     ; predecessor sees the original X
         lda     ACCSAVE         ; and the A saved by the Monitor IRQ entry
         plp                     ; restore live entry flags after loading A
+_serial_chain_target:
 chain_target:
         jmp     $ffff           ; operand patched from the predecessor IRQLOC
 

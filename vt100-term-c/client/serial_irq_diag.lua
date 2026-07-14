@@ -5,6 +5,7 @@
 -- ld65 label file via build/serial_irq_syms.txt, so ordinary layout changes do
 -- not require editing this script.
 local mem = manager.machine.devices[":maincpu"].spaces["program"]
+local cpu = manager.machine.devices[":maincpu"]
 local request_path = "build/serial_irq_diag_request"
 local output_path = "build/serial_irq_diag.txt"
 local syms_path = "build/serial_irq_syms.txt"
@@ -22,6 +23,7 @@ local function read_syms()
 end
 
 local syms = read_syms()
+local lifecycle = nil
 local expected_isr = nil
 local status_reads = 0
 local last_status = 0
@@ -38,6 +40,23 @@ local tx_xoff_writes = 0
 local tx_xon_writes = 0
 local trace = {}
 
+local function read_u16(addr)
+    return mem:read_u8(addr) | (mem:read_u8(addr + 1) << 8)
+end
+
+local function write_u16(addr, value)
+    mem:write_u8(addr, value & 0xFF)
+    mem:write_u8(addr + 1, (value >> 8) & 0xFF)
+end
+
+local function write_lines(lines)
+    local output = io.open(output_path, "w")
+    if output then
+        output:write(table.concat(lines, "\n") .. "\n")
+        output:close()
+    end
+end
+
 local function trace_event(kind, data)
     if #trace < 4096 then
         trace[#trace + 1] = string.format("%s:%02X", kind, data & 0xFF)
@@ -45,7 +64,7 @@ local function trace_event(kind, data)
 end
 
 local function vector()
-    return mem:read_u8(0x03FE) | (mem:read_u8(0x03FF) << 8)
+    return read_u16(0x03FE)
 end
 
 local vector_history = { string.format("INIT:%04X", vector()) }
@@ -185,8 +204,7 @@ local function snapshot()
     local xoff_sent = read_sym("xoff_sent")
     local tx_irq_active = read_sym("tx_irq_active")
     local old_irq_addr = syms.serial_old_irq
-    local old_irq = old_irq_addr and
-        (mem:read_u8(old_irq_addr) | (mem:read_u8(old_irq_addr + 1) << 8)) or -1
+    local old_irq = old_irq_addr and read_u16(old_irq_addr) or -1
     local old_irq_bytes = ""
     if old_irq >= 0 then
         local bytes = {}
@@ -195,6 +213,21 @@ local function snapshot()
         end
         old_irq_bytes = table.concat(bytes)
     end
+    local reset_vector = read_u16(0x03F2)
+    local reset_expected = syms.exit or 0
+    local reset_check = mem:read_u8(0x03F4)
+    local reset_valid =
+        ((((reset_vector >> 8) ~ 0xA5) & 0xFF) == reset_check) and 1 or 0
+    local old_reset_addr = syms.serial_old_reset
+    local old_reset = old_reset_addr and string.format(
+        "%02X%02X%02X",
+        mem:read_u8(old_reset_addr),
+        mem:read_u8(old_reset_addr + 1),
+        mem:read_u8(old_reset_addr + 2)
+    ) or ""
+    local tx_store_addr = syms.serial_tx_data_store
+    local tx_store_opcode = tx_store_addr and mem:read_u8(tx_store_addr) or -1
+    local tx_store_operand = tx_store_addr and read_u16(tx_store_addr + 1) or -1
     local switch_port = manager.machine.ioport.ports[":sl2:ssc:DSWX"]
     local switch_field = switch_port and switch_port.fields["Interrupts"]
     local switch_value = switch_field and switch_field.user_value or -1
@@ -213,6 +246,16 @@ local function snapshot()
             "irq_vector_active=%d",
             expected_isr and irq_vector == expected_isr and 1 or 0
         ),
+        string.format("reset_vector=%04X", reset_vector),
+        string.format("reset_vector_expected=%04X", reset_expected),
+        string.format(
+            "reset_vector_active=%d",
+            reset_vector == reset_expected and 1 or 0
+        ),
+        string.format("reset_vector_valid=%d", reset_valid),
+        "old_reset_bytes=" .. old_reset,
+        string.format("tx_store_opcode=%02X", tx_store_opcode),
+        string.format("tx_store_operand=%04X", tx_store_operand),
         string.format("ssc_interrupt_switch=%d", switch_value),
         string.format("null_modem_flow_control=%d", flow_value),
         string.format("acia_live_status=%02X", live_status),
@@ -249,12 +292,282 @@ local function snapshot()
         string.format("page2=%02X", mem:read_u8(0xC01C)),
         "vector_history=" .. table.concat(vector_history, ","),
         "trace=" .. table.concat(trace, ","),
-        "",
     }
-    local output = io.open(output_path, "w")
-    if output then
-        output:write(table.concat(lines, "\n"))
-        output:close()
+    write_lines(lines)
+end
+
+local function cpu_entry(primary, alternate)
+    return cpu.state[primary] or (alternate and cpu.state[alternate])
+end
+
+-- $7000-$77FF is free RAM between the alternate-screen save and C stack.
+local FOREIGN_ENTRY = 0x7000
+local FOREIGN_DRIVER = 0x7020
+local FOREIGN_PREDECESSOR = 0x7060
+local FOREIGN_CONTINUATION = 0x70A0
+local FOREIGN_LOOP = 0x70E0
+local FOREIGN_CAPTURE = 0x7140
+
+local function begin_foreign_irq()
+    local required = {
+        "serial_isr_entry",
+        "serial_chain_target",
+        "serial_chain_valid",
+    }
+    for _, name in ipairs(required) do
+        if not syms[name] then
+            write_lines({ "foreign_irq=1", "foreign_ok=0", "error=missing_" .. name })
+            return
+        end
+    end
+
+    local status = mem:read_u8(0xC0A9)
+    if (status & 0x88) ~= 0 then
+        write_lines({
+            "foreign_irq=1",
+            string.format("foreign_irq_status=%02X", status),
+            "foreign_ok=0",
+            "error=ACIA_not_idle",
+        })
+        return
+    end
+
+    local p = assert(cpu_entry("P"))
+    local pc = assert(cpu_entry("PC"))
+
+    -- The driver builds a hardware-compatible IRQ frame with real 6502 pushes,
+    -- then enters the ISR with deterministic registers and flags. The predecessor
+    -- records its entry ABI; the continuation records the post-RTI state.
+    local test_a = 0x5A
+    local test_x = 0x3C
+    local test_y = 0xC3
+    local live_p = 0x2D
+    local stack_p = 0xA5
+    local driver = {
+        0x78,
+        0xBA, 0x8E, 0x4C, 0x71,
+        0xA9, (FOREIGN_CONTINUATION >> 8) & 0xFF, 0x48,
+        0xA9, FOREIGN_CONTINUATION & 0xFF, 0x48,
+        0xA9, stack_p, 0x48,
+        0xBA, 0x8E, 0x4D, 0x71,
+        0xA9, test_a, 0x85, 0x45,
+        0xA2, test_x,
+        0xA0, test_y,
+        0xA9, live_p, 0x48, 0x28,
+        0x4C, syms.serial_isr_entry & 0xFF,
+        (syms.serial_isr_entry >> 8) & 0xFF,
+    }
+    local predecessor = {
+        0x48, 0x08, 0x68, 0x8D, 0x44, 0x71,
+        0x68, 0x8D, 0x40, 0x71,
+        0x8E, 0x41, 0x71,
+        0x8C, 0x42, 0x71,
+        0xBA, 0x8E, 0x43, 0x71,
+        0xBD, 0x01, 0x01, 0x8D, 0x50, 0x71,
+        0xBD, 0x02, 0x01, 0x8D, 0x51, 0x71,
+        0xBD, 0x03, 0x01, 0x8D, 0x52, 0x71,
+        0xEE, 0x45, 0x71,
+        0xAE, 0x41, 0x71,
+        0xAD, 0x40, 0x71,
+        0x40,
+    }
+    local continuation = {
+        0x48, 0x08, 0x68, 0x8D, 0x49, 0x71,
+        0x68, 0x8D, 0x46, 0x71,
+        0x8E, 0x47, 0x71,
+        0x8C, 0x48, 0x71,
+        0xBA, 0x8E, 0x4A, 0x71,
+        0xA9, 0x01, 0x8D, 0x4B, 0x71,
+        0x4C, 0xE0, 0x70,
+    }
+    for addr = FOREIGN_ENTRY, FOREIGN_DRIVER - 1 do
+        mem:write_u8(addr, 0xEA)
+    end
+    for i, value in ipairs(driver) do
+        mem:write_u8(FOREIGN_DRIVER - 1 + i, value)
+    end
+    for i, value in ipairs(predecessor) do
+        mem:write_u8(FOREIGN_PREDECESSOR - 1 + i, value)
+    end
+    for i, value in ipairs(continuation) do
+        mem:write_u8(FOREIGN_CONTINUATION - 1 + i, value)
+    end
+    mem:write_u8(FOREIGN_LOOP, 0x4C)
+    mem:write_u8(FOREIGN_LOOP + 1, FOREIGN_LOOP & 0xFF)
+    mem:write_u8(FOREIGN_LOOP + 2, (FOREIGN_LOOP >> 8) & 0xFF)
+    for addr = FOREIGN_CAPTURE, FOREIGN_CAPTURE + 18 do
+        mem:write_u8(addr, 0)
+    end
+
+    local chain_addr = syms.serial_chain_target
+    local saved_p = p.value & 0xFF
+    lifecycle = {
+        kind = "foreign",
+        frames = 0,
+        status = status,
+        chain_addr = chain_addr,
+        chain_low = mem:read_u8(chain_addr + 1),
+        chain_high = mem:read_u8(chain_addr + 2),
+        test_a = test_a,
+        test_x = test_x,
+        test_y = test_y,
+        live_p = live_p,
+        stack_p = stack_p,
+    }
+
+    write_u16(chain_addr + 1, FOREIGN_PREDECESSOR)
+    p.value = (saved_p | 0x04) & 0xFF
+    pc.value = FOREIGN_ENTRY
+end
+
+local function finish_foreign_irq(test)
+    local count = mem:read_u8(FOREIGN_CAPTURE + 5)
+    local chain_a = mem:read_u8(FOREIGN_CAPTURE)
+    local chain_x = mem:read_u8(FOREIGN_CAPTURE + 1)
+    local chain_y = mem:read_u8(FOREIGN_CAPTURE + 2)
+    local chain_s = mem:read_u8(FOREIGN_CAPTURE + 3)
+    local chain_p = mem:read_u8(FOREIGN_CAPTURE + 4)
+    local post_a = mem:read_u8(FOREIGN_CAPTURE + 6)
+    local post_x = mem:read_u8(FOREIGN_CAPTURE + 7)
+    local post_y = mem:read_u8(FOREIGN_CAPTURE + 8)
+    local post_p = mem:read_u8(FOREIGN_CAPTURE + 9)
+    local post_s = mem:read_u8(FOREIGN_CAPTURE + 10)
+    local driver_start_s = mem:read_u8(FOREIGN_CAPTURE + 12)
+    local driver_frame_s = mem:read_u8(FOREIGN_CAPTURE + 13)
+    local frame_p = mem:read_u8(FOREIGN_CAPTURE + 16)
+    local frame_low = mem:read_u8(FOREIGN_CAPTURE + 17)
+    local frame_high = mem:read_u8(FOREIGN_CAPTURE + 18)
+    local frame_ok =
+        frame_p == test.stack_p and
+        frame_low == (FOREIGN_CONTINUATION & 0xFF) and
+        frame_high == ((FOREIGN_CONTINUATION >> 8) & 0xFF)
+    local chain_regs =
+        chain_a == test.test_a and chain_x == test.test_x and
+        chain_y == test.test_y and chain_s == driver_frame_s and
+        (chain_p & 0xCF) == (test.live_p & 0xCF)
+    local rti_regs =
+        post_a == test.test_a and post_x == test.test_x and
+        post_y == test.test_y and post_s == driver_start_s and
+        (post_p & 0xCF) == (test.stack_p & 0xCF)
+    local ok = count == 1 and frame_ok and chain_regs and rti_regs
+    local lines = {
+        "foreign_irq=1",
+        string.format("foreign_irq_status=%02X", test.status),
+        string.format("foreign_chain_count=%d", count),
+        string.format("foreign_entry_a=%02X", chain_a),
+        string.format("foreign_entry_x=%02X", chain_x),
+        string.format("foreign_entry_y=%02X", chain_y),
+        string.format("foreign_entry_s=%02X", chain_s),
+        string.format("foreign_entry_p=%02X", chain_p),
+        string.format("foreign_rti_a=%02X", post_a),
+        string.format("foreign_rti_x=%02X", post_x),
+        string.format("foreign_rti_y=%02X", post_y),
+        string.format("foreign_rti_p=%02X", post_p),
+        string.format("foreign_rti_s=%02X", post_s),
+        string.format("foreign_expected_a=%02X", test.test_a),
+        string.format("foreign_expected_x=%02X", test.test_x),
+        string.format("foreign_expected_y=%02X", test.test_y),
+        string.format("foreign_expected_entry_s=%02X", driver_frame_s),
+        string.format("foreign_driver_start_s=%02X", driver_start_s),
+        string.format("foreign_driver_frame_s=%02X", driver_frame_s),
+        string.format("foreign_expected_entry_p=%02X", test.live_p),
+        string.format("foreign_expected_rti_p=%02X", test.stack_p),
+        string.format("foreign_expected_rti_s=%02X", driver_start_s),
+        string.format(
+            "foreign_frame=%02X,%02X,%02X",
+            frame_p,
+            frame_low,
+            frame_high
+        ),
+        string.format("foreign_frame_valid=%d", frame_ok and 1 or 0),
+        string.format("foreign_chain_registers=%d", chain_regs and 1 or 0),
+        string.format("foreign_rti_registers=%d", rti_regs and 1 or 0),
+        "foreign_resumed=1",
+        string.format("foreign_ok=%d", ok and 1 or 0),
+    }
+    mem:write_u8(test.chain_addr + 1, test.chain_low)
+    mem:write_u8(test.chain_addr + 2, test.chain_high)
+    write_lines(lines)
+    lifecycle = nil
+end
+
+local function begin_ctrl_reset()
+    local port = manager.machine.ioport.ports[":keyb_special"]
+    local control = port and port.fields["Control"]
+    local reset = port and port.fields["RESET"]
+    local old_irq_addr = syms.serial_old_irq
+    local old_reset_addr = syms.serial_old_reset
+    if not control or not reset or not old_irq_addr or not old_reset_addr then
+        write_lines({
+            "ctrl_reset=1",
+            "ctrl_reset_ok=0",
+            "error=missing_reset_input_or_symbol",
+        })
+        return
+    end
+
+    lifecycle = {
+        kind = "ctrl_reset",
+        frames = 0,
+        control = control,
+        reset = reset,
+        expected_irq = read_u16(old_irq_addr),
+        expected_reset = read_u16(old_reset_addr),
+        expected_pwredup = mem:read_u8(old_reset_addr + 2),
+    }
+    control:set_value(1)
+    reset:set_value(1)
+end
+
+local function finish_ctrl_reset(test)
+    local irq_vector = vector()
+    local reset_vector = read_u16(0x03F2)
+    local pwredup = mem:read_u8(0x03F4)
+    local command = mem:read_u8(0xC0AA)
+    local status = mem:read_u8(0xC0A9)
+    local irq_restored = irq_vector == test.expected_irq
+    local reset_restored =
+        reset_vector == test.expected_reset and pwredup == test.expected_pwredup
+    local reset_valid =
+        ((((reset_vector >> 8) ~ 0xA5) & 0xFF) == pwredup)
+    local irq_clear = (status & 0x80) == 0
+    local removed = read_sym("serial_isr_installed") == 0
+    local ok =
+        irq_restored and reset_restored and reset_valid and irq_clear and
+        removed and command == 0x0A
+
+    write_lines({
+        "ctrl_reset=1",
+        string.format("irq_vector=%04X", irq_vector),
+        string.format("irq_vector_expected=%04X", test.expected_irq),
+        string.format("irq_vector_restored=%d", irq_restored and 1 or 0),
+        string.format("reset_vector=%04X", reset_vector),
+        string.format("reset_vector_expected=%04X", test.expected_reset),
+        string.format("reset_vector_restored=%d", reset_restored and 1 or 0),
+        string.format("reset_vector_valid=%d", reset_valid and 1 or 0),
+        string.format("acia_command=%02X", command),
+        string.format("acia_status=%02X", status),
+        string.format("acia_irq_clear=%d", irq_clear and 1 or 0),
+        string.format("isr_removed=%d", removed and 1 or 0),
+        string.format("ctrl_reset_ok=%d", ok and 1 or 0),
+    })
+    lifecycle = nil
+end
+
+local function progress_lifecycle()
+    if not lifecycle then return end
+    lifecycle.frames = lifecycle.frames + 1
+    if lifecycle.kind == "foreign" then
+        if mem:read_u8(FOREIGN_CAPTURE + 11) ~= 0 or lifecycle.frames >= 10 then
+            finish_foreign_irq(lifecycle)
+        end
+    elseif lifecycle.kind == "ctrl_reset" then
+        if lifecycle.frames == 4 then
+            lifecycle.reset:set_value(0)
+            lifecycle.control:set_value(0)
+        elseif lifecycle.frames >= 90 then
+            finish_ctrl_reset(lifecycle)
+        end
     end
 end
 
@@ -267,6 +580,10 @@ local function snapshot_if_requested()
     if action == "reset" then
         reset_diagnostics()
         write_reset_ack()
+    elseif action == "foreign_irq" then
+        begin_foreign_irq()
+    elseif action == "ctrl_reset" then
+        begin_ctrl_reset()
     else
         snapshot()
     end
@@ -274,4 +591,5 @@ end
 
 _serial_irq_diag_notifier = emu.add_machine_frame_notifier(function()
     pcall(snapshot_if_requested)
+    pcall(progress_lifecycle)
 end)

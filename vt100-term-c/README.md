@@ -87,7 +87,7 @@ The Apple becomes a login console for Linux. On real hardware, use
 .venv/Scripts/python.exe client/vt100_test.py --keys --app  # application cursor keys
 .venv/Scripts/python.exe client/shell_test.py            # real WSL bash → screen render
 .venv/Scripts/python.exe client/conformance/runner.py --target mame  # spec conformance corpus
-MAME_PORT=6571 .venv/Scripts/python.exe client/serial_irq_stress.py mixed --runs 5  # IRQ/flow races
+MAME_PORT=6572 .venv/Scripts/python.exe client/serial_irq_stress.py mixed --runs 5  # IRQ/flow races
 ```
 
 The suites boot the terminal in headless MAME and check the results over the

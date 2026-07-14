@@ -18,7 +18,7 @@ ROOT = HERE.parent
 REPO = ROOT.parent
 BUILD = ROOT / "build"
 CONF = HERE / "conformance"
-PORT = int(os.environ.get("MAME_PORT", "6571"))
+PORT = int(os.environ.get("MAME_PORT", "6572"))
 os.environ["MAME_PORT"] = str(PORT)
 
 CONF_PROBE = CONF / "probes" / "serial_irq_probe.lua"
@@ -31,6 +31,7 @@ DIAG_OUTPUT = BUILD / "serial_irq_diag.txt"
 DIAG_SYMS = BUILD / "serial_irq_syms.txt"
 KEYS_REQUEST = BUILD / "serial_irq_keys_request"
 LBL = BUILD / "vt100.lbl"
+BIN = BUILD / "VT100.BIN"
 
 sys.path.insert(0, str(CONF))
 sys.path.insert(0, str(HERE))
@@ -54,9 +55,23 @@ MIXED_SENTINEL = b"MIXED-DUPLEX-DONE"
 MIXED_GROUP = b"\x1b[2J\x1b[HMIX\x1b[c\x1b[6n\x05"
 MIXED_PAYLOAD = MIXED_GROUP * 50 + b"\x1b[2J\x1b[H" + MIXED_SENTINEL
 MIXED_REPLY = (b"\x1b[?1;0c\x1b[1;4RA2VT100") * 50
-DIAG_SYMBOLS = ("r_head", "r_tail", "rx_ring", "t_head", "t_tail", "xoff_sent",
-                "tx_irq_active", "serial_old_irq", "serial_chain_valid",
-                "serial_isr_installed")
+DIAG_SYMBOLS = (
+    "r_head",
+    "r_tail",
+    "rx_ring",
+    "t_head",
+    "t_tail",
+    "xoff_sent",
+    "tx_irq_active",
+    "serial_old_irq",
+    "serial_chain_valid",
+    "serial_isr_installed",
+    "serial_isr_entry",
+    "serial_chain_target",
+    "serial_tx_data_store",
+    "serial_old_reset",
+    "exit",
+)
 _LBL_RE = re.compile(r"^al\s+([0-9A-Fa-f]+)\s+\._(\w+)\s*$")
 
 
@@ -68,10 +83,18 @@ def write_diag_syms() -> dict[str, int]:
         match = _LBL_RE.match(line.strip())
         if match and match.group(2) in DIAG_SYMBOLS:
             found[match.group(2)] = int(match.group(1), 16)
-    required = set(DIAG_SYMBOLS[:6])
+    required = set(DIAG_SYMBOLS)
     missing = sorted(required - found.keys())
     if missing:
         raise RuntimeError(f"missing firmware labels: {', '.join(missing)}")
+    image = BIN.read_bytes()
+    store_offset = found["serial_tx_data_store"] - 0x0800
+    if image[store_offset : store_offset + 3] != b"\x8d\xff\xff":
+        actual = image[store_offset : store_offset + 3].hex()
+        raise RuntimeError(
+            "TX data store is not an absolute STA $ffff in the linked image: "
+            f"{actual}"
+        )
     DIAG_SYMS.write_text(
         "".join(f"{name}={address:04x}\n" for name, address in found.items()),
         encoding="ascii",
@@ -96,7 +119,12 @@ def request_diag(action: str, timeout: float = 3.0) -> tuple[dict[str, str], str
     os.replace(DIAG_REQUEST_TMP, DIAG_REQUEST)
     deadline = time.time() + timeout
     raw = ""
-    marker = "reset=1" if action == "reset" else "page2="
+    marker = {
+        "reset": "reset=1",
+        "snapshot": "page2=",
+        "foreign_irq": "foreign_irq=",
+        "ctrl_reset": "ctrl_reset=",
+    }[action]
     while time.time() < deadline:
         try:
             raw = DIAG_OUTPUT.read_text(encoding="ascii", errors="replace")
@@ -151,6 +179,14 @@ def validate_diag(
         result["errors"].append(f"predecessor IRQ vector is not chainable: {diag!r}")
     if diag.get("isr_installed") != "1":
         result["errors"].append(f"serial ISR is not marked installed: {diag!r}")
+    if diag.get("tx_store_opcode") != "8D":
+        result["errors"].append(f"TX store is not absolute STA: {diag!r}")
+    if diag.get("tx_store_operand") != "C0A8":
+        result["errors"].append(f"TX store was not patched for slot 2: {diag!r}")
+    if diag.get("reset_vector_active") != "1":
+        result["errors"].append(f"Ctrl-Reset cleanup vector inactive: {diag!r}")
+    if diag.get("reset_vector_valid") != "1":
+        result["errors"].append(f"Ctrl-Reset vector checksum invalid: {diag!r}")
     try:
         expected_vector = int(diag.get("irq_vector_expected", ""), 16)
     except ValueError:
@@ -552,6 +588,108 @@ def run_flow_once(mode: str, index: int) -> dict:
     return result
 
 
+def run_lifecycle_once(index: int) -> dict:
+    target_mame.PROBE_LUA = CONF_PROBE
+    target: target_mame.MameTarget | None = None
+    result = {"run": index, "mode": "lifecycle", "ok": False, "errors": []}
+    clean_diag()
+    write_diag_syms()
+    try:
+        target = target_mame.MameTarget(
+            port=PORT, boot_timeout=45.0, settle=4.0, ack_to=3.0
+        )
+        target.open()
+        target.reset()
+        reset_diag()
+        target.term.clear_buf()
+
+        diag, diag_raw = request_diag("snapshot")
+        result["diag"] = diag
+        result["diag_raw"] = diag_raw
+        validate_diag(result, diag)
+
+        foreign, foreign_raw = request_diag("foreign_irq", timeout=5.0)
+        result["foreign_irq"] = foreign
+        result["foreign_irq_raw"] = foreign_raw
+        for field in (
+            "foreign_chain_count",
+            "foreign_frame_valid",
+            "foreign_chain_registers",
+            "foreign_rti_registers",
+            "foreign_resumed",
+            "foreign_ok",
+        ):
+            if foreign.get(field) != "1":
+                result["errors"].append(
+                    f"foreign IRQ invariant {field} failed: {foreign!r}"
+                )
+
+        # The synthetic probe deliberately owns the CPU until this fresh MAME
+        # instance closes. Exercise the real reset path on an unmodified boot.
+        target.close()
+        target = None
+        clean_diag()
+        time.sleep(0.10)
+
+        target = target_mame.MameTarget(
+            port=PORT, boot_timeout=45.0, settle=4.0, ack_to=3.0
+        )
+        target.open()
+        target.reset()
+        reset_diag()
+        target.term.clear_buf()
+        reset_diag_before, reset_diag_raw = request_diag("snapshot")
+        result["reset_diag"] = reset_diag_before
+        result["reset_diag_raw"] = reset_diag_raw
+        validate_diag(result, reset_diag_before)
+
+        target.term.send(b"\x1b[c", chunk=3)
+        deadline = time.monotonic() + 2.0
+        while target.term.peek() != DA_REPLY and time.monotonic() < deadline:
+            time.sleep(0.02)
+        pre_reset_reply = target.term.peek()
+        result["pre_reset_reply_hex"] = pre_reset_reply.hex()
+        if pre_reset_reply != DA_REPLY:
+            result["errors"].append(
+                f"terminal did not answer before Ctrl-Reset: {pre_reset_reply!r}"
+            )
+
+        reset, reset_raw = request_diag("ctrl_reset", timeout=10.0)
+        result["ctrl_reset"] = reset
+        result["ctrl_reset_raw"] = reset_raw
+        for field in (
+            "irq_vector_restored",
+            "reset_vector_restored",
+            "reset_vector_valid",
+            "acia_irq_clear",
+            "isr_removed",
+            "ctrl_reset_ok",
+        ):
+            if reset.get(field) != "1":
+                result["errors"].append(
+                    f"Ctrl-Reset invariant {field} failed: {reset!r}"
+                )
+        if reset.get("acia_command") != "0A":
+            result["errors"].append(
+                f"Ctrl-Reset left ACIA command {reset.get('acia_command')!r}"
+            )
+        if target.proc.poll() is not None:
+            result["errors"].append(
+                f"MAME exited early with {target.proc.returncode}"
+            )
+        result["ok"] = not result["errors"]
+    except Exception as exc:
+        result["errors"].append(f"{type(exc).__name__}: {exc}")
+        result["traceback"] = traceback.format_exc()
+    finally:
+        if target is not None:
+            target.close()
+        target_mame.PROBE_LUA = CONF_PROBE
+        clean_diag()
+        time.sleep(0.10)
+    return result
+
+
 def write_results(path: pathlib.Path, mode: str, runs: list[dict]) -> None:
     document = {
         "mode": mode,
@@ -568,7 +706,9 @@ def write_results(path: pathlib.Path, mode: str, runs: list[dict]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("da", "cpr", "wrap", "flow", "mixed"))
+    parser.add_argument(
+        "mode", choices=("da", "cpr", "wrap", "flow", "mixed", "lifecycle")
+    )
     parser.add_argument("--runs", type=int, default=20)
     parser.add_argument("--output", type=pathlib.Path)
     args = parser.parse_args()
@@ -588,6 +728,8 @@ def main() -> int:
             result = run_wrap_once(index)
         elif args.mode in ("flow", "mixed"):
             result = run_flow_once(args.mode, index)
+        elif args.mode == "lifecycle":
+            result = run_lifecycle_once(index)
         else:
             result = run_wire_once(args.mode, index)
         results.append(result)
