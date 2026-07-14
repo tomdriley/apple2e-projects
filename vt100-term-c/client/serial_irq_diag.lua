@@ -629,6 +629,9 @@ local function begin_ctrl_reset()
         expected_reset = read_u16(old_reset_addr),
         expected_pwredup = mem:read_u8(old_reset_addr + 2),
     }
+    -- Observe every restore write even if the firmware omits or misorders the
+    -- PWREDUP invalidation that would normally arm publication tracking.
+    reset_publish_tracking = true
     control:set_value(1)
     reset:set_value(1)
 end
