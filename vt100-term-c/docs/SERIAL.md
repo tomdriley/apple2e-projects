@@ -76,9 +76,9 @@ that became pending during the first pass is not stranded:
   TDRE writes `0x09` once. Otherwise TDRE would assert continuously, and
   redundant command writes needlessly restart MAME's emulated divider.
 - **Full rings:** RX drains the ACIA and drops the newest byte if the host has
-  ignored XOFF long enough to fill all 255 slots. TX waits only when its 255
-  slots are occupied, re-enabling interrupts between retries so the ISR can
-  make space.
+  ignored XOFF long enough to fill all 255 slots. Ordinary TX output uses at
+  most 254 slots; the final usable slot is reserved for urgent XOFF. TX
+  re-enables interrupts between retries so the ISR can make space.
 
 Both indices in each FIFO are byte-sized and asynchronous indices are
 `volatile`. RX is lock-free because it has exactly one producer and one consumer.
@@ -102,7 +102,8 @@ requirement.
 
 - At RX occupancy **192**, the ISR decrements `t_tail`, stores **XOFF** there, and
   arms TX IRQ. This front-push makes XOFF the next transmitted byte even when
-  ordinary replies are already queued.
+  ordinary replies are already queued. Normal enqueues cannot consume the
+  reserved final slot, so a saturated reply stream cannot starve XOFF.
 - Once main drains RX to **64**, `serial_getch()` clears the throttled state and
   appends **XON** normally. XON need not jump queued output because the host is
   already stopped.
@@ -150,25 +151,29 @@ handler neither reads nor changes `PAGE2`. If it interrupts `cell_put()` while
 AUX is selected, the render resumes with the same bank selected.
 
 After clearing BSS, crt0 saves the predecessor `SOFTEV` vector and `PWREDUP`
-validity byte, then publishes `_exit` as a valid warm-reset target before the
-serial ISR can be armed. A normal return and interactive Ctrl-Reset therefore use
-the same teardown. It masks CPU IRQs, deasserts DTR with command `0x0A`, reads
-status to clear any already-latched modem IRQ, restores the predecessor IRQLOC,
-then restores `SOFTEV`/`PWREDUP` and enters the DOS warm start.
+validity byte, invalidates `PWREDUP`, replaces both vector bytes, then publishes
+the new validity byte last. A reset during replacement therefore cannot accept a
+mixed old/new address. `_exit` is valid before the serial ISR can be armed, so a
+normal return and interactive Ctrl-Reset use the same teardown. It masks CPU
+IRQs, deasserts DTR with command `0x0A`, reads status to clear any already-latched
+modem IRQ, restores the predecessor IRQLOC, then invalidates and restores
+`SOFTEV`/`PWREDUP` before entering the DOS warm start.
 
 ## Race-stress coverage
 
 `client/serial_irq_stress.py` boots fresh firmware for exact DA, back-to-back
-CPR, shell-wrap, flow-control, mixed-duplex, and lifecycle trials. Its Lua taps
-derive RAM addresses from `build/vt100.lbl` and verify the exact bytes published
-to the RX ring, wire replies, command transitions, ring drain, ACIA error bits,
-IRQLOC, the reset vector, XON/XOFF pairs, the linked absolute TX opcode, and
-PAGE2 during each RX publication. The mixed mode also injects keyboard bytes
-while DA, CPR, ENQ, rendering, and repeated flow-control crossings are active.
-The lifecycle mode synthesizes an unclaimed Monitor-contract IRQ to verify
-predecessor chaining plus exact register, stack, frame, and RTI preservation.
-On a separate fresh boot it then presses MAME's real Control+RESET inputs and
-checks ACIA, IRQLOC, and `SOFTEV` teardown.
+CPR, shell-wrap, flow-control, mixed-duplex, TX-reserve, and lifecycle trials.
+Its Lua taps derive RAM addresses from `build/vt100.lbl` and verify the exact
+bytes published to the RX ring, wire replies, command transitions, ring drain,
+ACIA error bits, IRQLOC, the reset vector, XON/XOFF pairs, the linked absolute
+TX opcode, and PAGE2 during each RX publication. The mixed mode also injects
+keyboard bytes while DA, CPR, ENQ, rendering, and repeated flow-control
+crossings are active. The reserve mode fills all 254 ordinary TX slots and
+requires XOFF to claim slot 255. The lifecycle mode synthesizes an unclaimed
+Monitor-contract IRQ to verify predecessor chaining plus exact register, stack,
+frame, and RTI preservation. On a separate fresh boot it then presses MAME's
+real Control+RESET inputs and checks ACIA, IRQLOC, and race-safe `SOFTEV`
+teardown.
 
 ## The retired receive-overrun class
 

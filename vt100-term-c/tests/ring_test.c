@@ -3,8 +3,9 @@
  * The RX tests link the real ring.c implementation. The TX
  * tests model serial.c/serial_isr.s operations because the hardware ISR cannot
  * run under sim65; they cover FIFO order, urgent XOFF front-push, wraparound,
- * full handling, and the near-full enqueue/front-push interleaving that makes
- * serial_put's short interrupt-masked critical section necessary.
+ * full handling, the urgent-slot reservation, and the near-full
+ * enqueue/front-push interleaving that makes serial_put's short
+ * interrupt-masked critical section necessary.
  *
  * The RX section exercises two variants:
  *   - "real"   : the shipped design -- a count-free single-producer/single-
@@ -94,7 +95,25 @@ static void t_arm(void)
     }
 }
 
+static unsigned char t_normal_has_space(unsigned char nh)
+{
+    return nh != t_tail && (unsigned char)(nh + 1) != t_tail;
+}
+
 static unsigned char t_put(unsigned char b)
+{
+    unsigned char nh;
+    nh = (unsigned char)(t_head + 1);
+    if (!t_normal_has_space(nh)) {
+        return 0;
+    }
+    t_ring[t_head] = b;
+    t_head         = nh;
+    t_arm();
+    return 1;
+}
+
+static unsigned char t_put_control(unsigned char b)
 {
     unsigned char nh;
     nh = (unsigned char)(t_head + 1);
@@ -113,7 +132,7 @@ static unsigned char t_write(const unsigned char *data, unsigned char len)
     unsigned char nh;
     for (i = 0; i < len; ++i) {
         nh = (unsigned char)(t_head + 1);
-        if (nh == t_tail) {
+        if (!t_normal_has_space(nh)) {
             t_arm();
             return 0;
         }
@@ -169,7 +188,7 @@ static int t_irq_tdre(void)
  * pressure must leave paused set; only claiming an XON slot clears it. */
 static unsigned char t_try_resume(unsigned char *paused, unsigned char rx_count)
 {
-    if (*paused == 0 || rx_count > RING_LOW || t_put(XON) == 0) {
+    if (*paused == 0 || rx_count > RING_LOW || t_put_control(XON) == 0) {
         return 0;
     }
     *paused = 0;
@@ -296,34 +315,37 @@ int main(void)
     check("tx: front-push wraps tail and works on an empty queue",
         t_push_front(XOFF) != 0 && t_count() == 1 && t_get() == XOFF && t_count() == 0);
 
-    /* --- TX Scenario F: sentinel handling at capacity -------------------- */
-    t_reset();
-    for (i = 0; i < 255; ++i) {
-        (void)t_put((unsigned char)i);
-    }
-    check("tx: full queue rejects normal enqueue", t_count() == 255 && t_put(0xAA) == 0);
-    check("tx: full queue rejects XOFF without overwriting data",
-        t_push_front(XOFF) == 0 && t_count() == 255 && t_get() == 0);
-
-    /* --- TX Scenario G: the near-full enqueue/front-push race ------------ *
-     * At 254 bytes, either side may claim the final sentinel-adjacent slot,
-     * but not both. serial_put masks IRQs around its capacity recheck, store
-     * and head publish, making these the only two possible interleavings. */
+    /* --- TX Scenario F: reserve the final usable slot for XOFF ------------ */
     t_reset();
     for (i = 0; i < 254; ++i) {
         (void)t_put((unsigned char)i);
     }
-    check("tx: main-first enqueue leaves no slot for XOFF",
-        t_put(0xAA) != 0 && t_push_front(XOFF) == 0 && t_count() == 255);
+    check("tx: ordinary output preserves the urgent control slot",
+        t_count() == 254 && t_put(0xAA) == 0);
+    check("tx: reserved slot accepts XOFF at ordinary capacity",
+        t_push_front(XOFF) != 0 && t_count() == 255 && t_get() == XOFF);
+    check("tx: XOFF front-push preserves queued output",
+        t_count() == 254 && t_get() == 0);
 
+    /* --- TX Scenario G: near-full enqueue/front-push orderings ------------ *
+     * At 253 bytes, main may publish byte 254 before XOFF takes the reserved
+     * slot. If XOFF arrives first, normal output leaves that slot occupied and
+     * retries after TX drains. Both orders preserve the sentinel invariant. */
     t_reset();
-    for (i = 0; i < 254; ++i) {
+    for (i = 0; i < 253; ++i) {
         (void)t_put((unsigned char)i);
     }
-    check("tx: ISR-first XOFF leaves no slot for main enqueue",
-        t_push_front(XOFF) != 0 && t_put(0xAA) == 0 && t_count() == 255);
-    check("tx: ISR-first queue sends XOFF before freeing main's slot",
-        t_get() == XOFF && t_put(0xAA) != 0 && t_count() == 255);
+    check("tx: main-first enqueue still leaves the reserved XOFF slot",
+        t_put(0xAA) != 0 && t_push_front(XOFF) != 0 && t_count() == 255);
+
+    t_reset();
+    for (i = 0; i < 253; ++i) {
+        (void)t_put((unsigned char)i);
+    }
+    check("tx: ISR-first XOFF keeps ordinary output behind the reserve",
+        t_push_front(XOFF) != 0 && t_put(0xAA) == 0 && t_count() == 254);
+    check("tx: sending ISR-first XOFF lets ordinary output resume",
+        t_get() == XOFF && t_put(0xAA) != 0 && t_count() == 254);
 
     /* Teeth check: the old unmasked check/store/publish sequence lets XOFF
      * claim the sentinel after main has checked it, then publishes head ==
@@ -341,9 +363,10 @@ int main(void)
 
     /* --- TX Scenario H: XON owns a queue slot before clearing pause ------- */
     t_reset();
-    for (i = 0; i < 255; ++i) {
+    for (i = 0; i < 254; ++i) {
         (void)t_put((unsigned char)i);
     }
+    (void)t_push_front(XOFF);
     paused = 1;
     check("tx: full queue defers XON without clearing throttled state",
         t_try_resume(&paused, RING_LOW) == 0 && paused == 1 && t_count() == 255);

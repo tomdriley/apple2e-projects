@@ -73,6 +73,7 @@ and strip the overlay from its read-back.
 - **Interrupt-shared state is `volatile`.** The ring indices written by the ISR
   must be re-read by C. Keep shared byte writes atomic; protect multi-step
   invariants (the TX capacity check/store/publish) with a brief `SEI`/`CLI`.
+  Ordinary TX output must also leave the final usable slot reserved for XOFF.
 - **Apple IRQ ABI.** The ROM saves A at `$45` and jumps through `$03FE`; an ISR
   must preserve X/Y, restore A, avoid cc65 runtime temporaries, and finish with
   `RTI`. Unclaimed IRQs must restore the same entry contract before chaining.
@@ -81,6 +82,8 @@ and strip the overlay from its read-back.
   as a valid warm-reset target before the serial ISR is armed. Both a normal
   return and Ctrl-Reset must disable the ACIA IRQ, restore IRQLOC, restore the
   predecessor reset vector and validity byte, and only then return to DOS.
+  Invalidate `PWREDUP` before changing either `SOFTEV` byte, then publish the
+  matching validity byte last so reset cannot accept a mixed address.
 - **6502 stores can read first.** `STA (zp),Y` performs a dummy read before its
   write. Never use it for ACIA DATA: the read clears RDRF. The serial ISR uses an
   install-time-patched absolute `STA` for exactly this reason.

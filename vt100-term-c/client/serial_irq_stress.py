@@ -55,6 +55,14 @@ MIXED_SENTINEL = b"MIXED-DUPLEX-DONE"
 MIXED_GROUP = b"\x1b[2J\x1b[HMIX\x1b[c\x1b[6n\x05"
 MIXED_PAYLOAD = MIXED_GROUP * 50 + b"\x1b[2J\x1b[H" + MIXED_SENTINEL
 MIXED_REPLY = (b"\x1b[?1;0c\x1b[1;4RA2VT100") * 50
+RESERVE_SENTINEL = b"TX-RESERVE-DONE"
+RESERVE_QUERIES = 300
+RESERVE_PRIME_QUERIES = 64
+RESERVE_PRIME_DELAY = 0.10
+RESERVE_PAYLOAD = (
+    b"\x05" * RESERVE_QUERIES + b"\x1b[2J\x1b[H" + RESERVE_SENTINEL
+)
+RESERVE_REPLY = b"A2VT100" * RESERVE_QUERIES
 DIAG_SYMBOLS = (
     "r_head",
     "r_tail",
@@ -187,6 +195,10 @@ def validate_diag(
         result["errors"].append(f"Ctrl-Reset cleanup vector inactive: {diag!r}")
     if diag.get("reset_vector_valid") != "1":
         result["errors"].append(f"Ctrl-Reset vector checksum invalid: {diag!r}")
+    if diag.get("reset_vector_unsafe_writes") != "0":
+        result["errors"].append(
+            f"Ctrl-Reset vector changed while checksum-valid: {diag!r}"
+        )
     try:
         expected_vector = int(diag.get("irq_vector_expected", ""), 16)
     except ValueError:
@@ -481,6 +493,10 @@ def run_flow_once(mode: str, index: int) -> dict:
         payload = MIXED_PAYLOAD
         sentinel = MIXED_SENTINEL
         expected_reply = MIXED_REPLY
+    elif mode == "reserve":
+        payload = RESERVE_PAYLOAD
+        sentinel = RESERVE_SENTINEL
+        expected_reply = RESERVE_REPLY
     else:
         payload = FLOW_PAYLOAD
         sentinel = FLOW_SENTINEL
@@ -497,7 +513,17 @@ def run_flow_once(mode: str, index: int) -> dict:
         target.reset()
         reset_diag()
         target.term.clear_buf()
-        target.term.send(payload, chunk=len(payload))
+        if mode == "reserve":
+            target.term.send(
+                payload[:RESERVE_PRIME_QUERIES], chunk=RESERVE_PRIME_QUERIES
+            )
+            time.sleep(RESERVE_PRIME_DELAY)
+            target.term.send(
+                payload[RESERVE_PRIME_QUERIES:],
+                chunk=len(payload) - RESERVE_PRIME_QUERIES,
+            )
+        else:
+            target.term.send(payload, chunk=len(payload))
         if mode == "mixed":
             KEYS_REQUEST.write_text("inject\n", encoding="ascii")
         expected_cursor = (1, len(sentinel) + 1)
@@ -572,7 +598,18 @@ def run_flow_once(mode: str, index: int) -> dict:
             )
         if diag.get("xoff_sent") != "0":
             result["errors"].append(f"flow-control state did not resume: {diag!r}")
-        if int(diag.get("rx_page2_aux_publications", "0")) < 1:
+        if mode == "reserve":
+            try:
+                tx_max_count = int(diag.get("tx_max_count", "0"))
+                reserved_xoffs = int(diag.get("tx_reserved_xoff_writes", "0"))
+            except ValueError:
+                tx_max_count = reserved_xoffs = -1
+            if tx_max_count != 255 or reserved_xoffs < 1:
+                result["errors"].append(
+                    "TX reserve was not exercised at occupancy 255: "
+                    f"max={tx_max_count}, reserved_xoffs={reserved_xoffs}"
+                )
+        elif int(diag.get("rx_page2_aux_publications", "0")) < 1:
             result["errors"].append(
                 "flow traffic never interrupted AUX-selected rendering"
             )
@@ -673,6 +710,10 @@ def run_lifecycle_once(index: int) -> dict:
             result["errors"].append(
                 f"Ctrl-Reset left ACIA command {reset.get('acia_command')!r}"
             )
+        if reset.get("reset_vector_unsafe_writes") != "0":
+            result["errors"].append(
+                f"Ctrl-Reset restored through a checksum-valid mixed vector: {reset!r}"
+            )
         if target.proc.poll() is not None:
             result["errors"].append(
                 f"MAME exited early with {target.proc.returncode}"
@@ -707,7 +748,8 @@ def write_results(path: pathlib.Path, mode: str, runs: list[dict]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "mode", choices=("da", "cpr", "wrap", "flow", "mixed", "lifecycle")
+        "mode",
+        choices=("da", "cpr", "wrap", "flow", "mixed", "reserve", "lifecycle"),
     )
     parser.add_argument("--runs", type=int, default=20)
     parser.add_argument("--output", type=pathlib.Path)
@@ -726,7 +768,7 @@ def main() -> int:
     for index in range(1, args.runs + 1):
         if args.mode == "wrap":
             result = run_wrap_once(index)
-        elif args.mode in ("flow", "mixed"):
+        elif args.mode in ("flow", "mixed", "reserve"):
             result = run_flow_once(args.mode, index)
         elif args.mode == "lifecycle":
             result = run_lifecycle_once(index)

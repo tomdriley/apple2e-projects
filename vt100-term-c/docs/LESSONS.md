@@ -178,10 +178,13 @@ also decrements `t_tail` and inserts XOFF at the front so it jumps queued replie
 At 254-byte occupancy, an unmasked main enqueue can observe the final free slot,
 then be interrupted while the ISR claims the same sentinel boundary from the
 other end. Publishing main's reserved head afterward makes `head == tail`, which
-falsely looks empty. The fix is a short main-side critical section covering the
-capacity recheck, data store, head publish, and TX-IRQ arm. If the queue is full,
-main re-enables IRQs before retrying so the ISR can drain it. The sim65 test
-models both legal orderings and includes the unsafe interleaving as a teeth check.
+falsely looks empty. Even with atomic publication, letting ordinary output use
+all 255 slots can starve XOFF under sustained reply traffic. The fix combines a
+short main-side critical section with a permanent one-slot urgent reserve:
+ordinary output stops at 254 bytes while XOFF may claim slot 255. If ordinary
+output reaches that boundary, main re-enables IRQs before retrying so the ISR can
+drain it. The sim65 test models both publication orders, proves XOFF remains
+admissible, and retains the unsafe interleaving as a teeth check.
 
 The lesson: front insertion is another producer operation even when it writes the
 consumer index. Re-check the sentinel invariant under every interleaving, not

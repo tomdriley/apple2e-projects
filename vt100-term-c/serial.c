@@ -41,7 +41,8 @@ static unsigned char           found_slot;
  * is a second producer operation, so serial_put masks interrupts while it
  * rechecks capacity, stores the byte and publishes t_head. Without that small
  * critical section, a near-full queue could have its sentinel consumed by an
- * interleaved XOFF push and momentarily look empty. */
+ * interleaved XOFF push and momentarily look empty. Ordinary output also leaves
+ * one usable slot reserved so high-water XOFF can never be starved. */
 unsigned char          tx_ring[RING_SIZE];
 volatile unsigned char t_head, t_tail;
 volatile unsigned char xoff_sent;
@@ -93,17 +94,18 @@ void serial_init(void)
     serial_isr_install(acia);
 }
 
-/* Queue one byte for transmission. This only waits when all 255 usable slots
- * are occupied; interrupts are re-enabled between retries so the ISR can keep
- * receiving and drain the TX queue. The capacity check, store and head publish
- * are one critical section because the ISR can also add XOFF at the front. */
+/* Queue one byte for transmission. Ordinary output uses at most 254 slots,
+ * reserving the final usable slot for urgent XOFF. Interrupts are re-enabled
+ * between retries so the ISR can keep receiving and drain the TX queue. The
+ * capacity check, store and head publish are one critical section because the
+ * ISR can also add XOFF at the front. */
 void serial_put(char c)
 {
     unsigned char nh;
     for (;;) {
         irq_off();
         nh = (unsigned char)(t_head + 1);
-        if (nh != t_tail) {
+        if (nh != t_tail && (unsigned char)(nh + 1) != t_tail) {
             break;
         }
         irq_on();
@@ -124,7 +126,7 @@ void serial_write(const char *data, unsigned char len)
     while (len != 0) {
         irq_off();
         nh = (unsigned char)(t_head + 1);
-        if (nh == t_tail) {
+        if (nh == t_tail || (unsigned char)(nh + 1) == t_tail) {
             arm_tx();
             irq_on();
             continue;
@@ -139,7 +141,8 @@ void serial_write(const char *data, unsigned char len)
     }
 }
 
-/* Queue XON and clear the throttled state as one ISR-safe operation. Keep
+/* Queue XON and clear the throttled state as one ISR-safe operation. XON may
+ * claim the reserved control slot because the host is already paused. Keep
  * xoff_sent set while a full TX ring makes us wait, so the RX ISR cannot
  * mistake the pause for a new high-water crossing. Recheck RX occupancy after
  * every wait because the host may not have honored XOFF yet. */
