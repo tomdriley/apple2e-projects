@@ -32,6 +32,9 @@ save_reset:
         sta     _serial_old_reset,x
         dex
         bpl     save_reset
+        lda     SOFTEV+1
+        eor     #$5A            ; invalidate PWREDUP before either vector byte changes
+        sta     PWREDUP
         lda     #<_exit
         sta     SOFTEV
         lda     #>_exit
@@ -40,6 +43,9 @@ save_reset:
         sta     PWREDUP           ; publish a valid cleanup vector last
         jsr     _start            ; run the C program
 _exit:  jsr     _serial_isr_remove
+        lda     SOFTEV+1
+        eor     #$5A            ; keep mixed old/new addresses invalid during restore
+        sta     PWREDUP
         lda     _serial_old_reset
         sta     SOFTEV
         lda     _serial_old_reset+1

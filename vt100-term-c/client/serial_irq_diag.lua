@@ -38,6 +38,15 @@ local rx_publication_bytes = {}
 local rx_page2_aux_publications = 0
 local tx_xoff_writes = 0
 local tx_xon_writes = 0
+local tx_max_count = 0
+local tx_reserved_xoff_writes = 0
+local observed_t_tail = syms.t_tail and mem:read_u8(syms.t_tail) or nil
+local observed_reset_low = mem:read_u8(0x03F2)
+local observed_reset_high = mem:read_u8(0x03F3)
+local observed_pwredup = mem:read_u8(0x03F4)
+local reset_publish_tracking = false
+local reset_vector_unsafe_writes = 0
+local reset_vector_history = {}
 local trace = {}
 
 local function read_u16(addr)
@@ -131,6 +140,76 @@ _serial_irq_vector_write_tap = mem:install_write_tap(
     end
 )
 
+local function record_reset_event(kind, value)
+    if #reset_vector_history < 32 then
+        reset_vector_history[#reset_vector_history + 1] =
+            string.format("%s:%02X", kind, value & 0xFF)
+    end
+end
+
+_serial_irq_reset_low_write_tap = mem:install_write_tap(
+    0x03F2,
+    0x03F2,
+    "serial IRQ reset vector low writes",
+    function(_offset, data, _mask)
+        local value = data & 0xFF
+        if syms.exit and value == (syms.exit & 0xFF) then
+            reset_publish_tracking = true
+        end
+        if reset_publish_tracking then
+            record_reset_event("LO", value)
+            if value ~= observed_reset_low
+                and ((observed_reset_high ~ 0xA5) & 0xFF) == observed_pwredup then
+                reset_vector_unsafe_writes = reset_vector_unsafe_writes + 1
+            end
+        end
+        observed_reset_low = value
+    end
+)
+
+_serial_irq_reset_high_write_tap = mem:install_write_tap(
+    0x03F3,
+    0x03F3,
+    "serial IRQ reset vector high writes",
+    function(_offset, data, _mask)
+        local value = data & 0xFF
+        if syms.exit
+            and value == ((syms.exit >> 8) & 0xFF)
+            and observed_reset_low == (syms.exit & 0xFF) then
+            reset_publish_tracking = true
+        end
+        if reset_publish_tracking then
+            record_reset_event("HI", value)
+            if value ~= observed_reset_high
+                and ((value ~ 0xA5) & 0xFF) == observed_pwredup then
+                reset_vector_unsafe_writes = reset_vector_unsafe_writes + 1
+            end
+        end
+        observed_reset_high = value
+    end
+)
+
+_serial_irq_pwredup_write_tap = mem:install_write_tap(
+    0x03F4,
+    0x03F4,
+    "serial IRQ reset validity writes",
+    function(_offset, data, _mask)
+        local value = data & 0xFF
+        local vector_addr = observed_reset_low | (observed_reset_high << 8)
+        local valid = ((observed_reset_high ~ 0xA5) & 0xFF) == value
+        if syms.exit and vector_addr == syms.exit and not valid then
+            reset_publish_tracking = true
+        end
+        if reset_publish_tracking then
+            record_reset_event("PW", value)
+        end
+        observed_pwredup = value
+        if reset_publish_tracking and valid then
+            reset_publish_tracking = false
+        end
+    end
+)
+
 if syms.r_head then
     _serial_irq_rhead_write_tap = mem:install_write_tap(
         syms.r_head,
@@ -169,6 +248,34 @@ local function count(head, tail)
     return (head - tail) & 0xFF
 end
 
+if syms.t_head and syms.t_tail then
+    _serial_irq_thead_write_tap = mem:install_write_tap(
+        syms.t_head,
+        syms.t_head,
+        "serial IRQ TX head writes",
+        function(_offset, data, _mask)
+            local occupancy = count(data & 0xFF, mem:read_u8(syms.t_tail))
+            tx_max_count = math.max(tx_max_count, occupancy)
+        end
+    )
+    _serial_irq_ttail_write_tap = mem:install_write_tap(
+        syms.t_tail,
+        syms.t_tail,
+        "serial IRQ TX tail writes",
+        function(_offset, data, _mask)
+            local new_tail = data & 0xFF
+            local occupancy = count(mem:read_u8(syms.t_head), new_tail)
+            if observed_t_tail
+                and new_tail == ((observed_t_tail - 1) & 0xFF)
+                and occupancy == 255 then
+                tx_reserved_xoff_writes = tx_reserved_xoff_writes + 1
+            end
+            observed_t_tail = new_tail
+            tx_max_count = math.max(tx_max_count, occupancy)
+        end
+    )
+end
+
 local function reset_diagnostics()
     expected_isr = vector()
     status_reads = 0
@@ -184,6 +291,9 @@ local function reset_diagnostics()
     rx_page2_aux_publications = 0
     tx_xoff_writes = 0
     tx_xon_writes = 0
+    tx_max_count = 0
+    tx_reserved_xoff_writes = 0
+    observed_t_tail = read_sym("t_tail")
     trace = {}
 end
 
@@ -253,6 +363,8 @@ local function snapshot()
             reset_vector == reset_expected and 1 or 0
         ),
         string.format("reset_vector_valid=%d", reset_valid),
+        string.format("reset_vector_unsafe_writes=%d", reset_vector_unsafe_writes),
+        "reset_vector_history=" .. table.concat(reset_vector_history, ","),
         "old_reset_bytes=" .. old_reset,
         string.format("tx_store_opcode=%02X", tx_store_opcode),
         string.format("tx_store_operand=%04X", tx_store_operand),
@@ -270,6 +382,8 @@ local function snapshot()
         "command_sequence=" .. table.concat(command_sequence, ","),
         string.format("tx_xoff_writes=%d", tx_xoff_writes),
         string.format("tx_xon_writes=%d", tx_xon_writes),
+        string.format("tx_max_count=%d", tx_max_count),
+        string.format("tx_reserved_xoff_writes=%d", tx_reserved_xoff_writes),
         string.format("r_head=%d", r_head),
         string.format("r_tail=%d", r_tail),
         string.format("rx_count=%d", count(r_head, r_tail)),
@@ -534,7 +648,7 @@ local function finish_ctrl_reset(test)
     local removed = read_sym("serial_isr_installed") == 0
     local ok =
         irq_restored and reset_restored and reset_valid and irq_clear and
-        removed and command == 0x0A
+        removed and command == 0x0A and reset_vector_unsafe_writes == 0
 
     write_lines({
         "ctrl_reset=1",
@@ -545,6 +659,8 @@ local function finish_ctrl_reset(test)
         string.format("reset_vector_expected=%04X", test.expected_reset),
         string.format("reset_vector_restored=%d", reset_restored and 1 or 0),
         string.format("reset_vector_valid=%d", reset_valid and 1 or 0),
+        string.format("reset_vector_unsafe_writes=%d", reset_vector_unsafe_writes),
+        "reset_vector_history=" .. table.concat(reset_vector_history, ","),
         string.format("acia_command=%02X", command),
         string.format("acia_status=%02X", status),
         string.format("acia_irq_clear=%d", irq_clear and 1 or 0),
