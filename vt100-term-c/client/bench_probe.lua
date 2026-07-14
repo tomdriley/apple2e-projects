@@ -8,6 +8,11 @@
 -- MAME wires the Super Serial Card into slot 2, whose 6551 data register is at
 -- $C0A8 ($C088 + slot*16). The firmware auto-detects the slot but resolves to
 -- the same address here.
+local script_source = debug.getinfo(1, "S").source
+local script_path = script_source:sub(1, 1) == "@" and script_source:sub(2) or script_source
+local script_dir = script_path:match("^(.*)[/\\]") or "."
+dofile(script_dir .. "/ssc_irq.lua")
+
 local OUT  = "build/bench_ticks.txt"
 local DATA = 0xC0A8
 

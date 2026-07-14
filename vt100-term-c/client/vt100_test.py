@@ -18,6 +18,7 @@ any test fails, so it is CI-friendly.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import socket
 import subprocess
@@ -31,7 +32,8 @@ MAME = r"C:\mame\mame.exe"
 ROMPATH = r"C:\mame\roms"
 DISK = str(ROOT / "build" / "vt100.dsk")
 KEYS_LUA = str(HERE / "keys.lua")
-PORT = 6551
+SSC_IRQ_LUA = str(HERE / "ssc_irq.lua")
+PORT = int(os.environ.get("MAME_PORT", "6551"))
 
 CPR = re.compile(rb"\x1b\[(\d+);(\d+)R")
 
@@ -49,7 +51,7 @@ CURSOR_TESTS = [
     ("tab",         b"\x1b[2J\x1b[1;1H\t",           (1, 9)),
     ("print_text",  b"\x1b[2J\x1b[3;5HHELLO",        (3, 10)),
     ("autowrap",    b"\x1b[2J\x1b[1;79HABC",         (2, 2)),
-    ("clear_homes", b"\x1b[5;10H\x1b[2J",            (1, 1)),
+    ("ed2_preserves", b"\x1b[5;10H\x1b[2J",           (5, 10)),
     ("back_clamp",  b"\x1b[2J\x1b[1;3H\x1b[9D",      (1, 1)),
     ("fwd_clamp",   b"\x1b[2J\x1b[1;78H\x1b[9C",     (1, 80)),
     ("up_clamp",    b"\x1b[2J\x1b[1;5H\x1b[9A",      (1, 5)),
@@ -244,7 +246,8 @@ def main():
     srv.bind(("127.0.0.1", PORT))
     srv.listen(1)
     srv.settimeout(60)
-    mame = launch_mame(["-autoboot_script", KEYS_LUA] if args.keys else None)
+    script = KEYS_LUA if args.keys else SSC_IRQ_LUA
+    mame = launch_mame(["-autoboot_script", script])
     fails = 1
     try:
         conn, _ = srv.accept()

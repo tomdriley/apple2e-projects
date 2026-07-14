@@ -122,6 +122,7 @@ int main(void)
     }
     check("fixed: FIFO integrity preserved across overflow (bytes 0..254)", ok);
     check("fixed: empty after draining, no phantom bytes", f_get() == -1 && f_ready() == 0);
+    check("fixed: drop telemetry counts rejected newest bytes", ring_drop_count == 46);
 
     /* Same scenario on the buggy ring must misbehave, proving the checks bite. */
     b_reset();
@@ -178,6 +179,18 @@ int main(void)
         }
     }
     check("fixed: head/tail wrap mod 256 keeps FIFO order", ok && f_ready() == 0);
+
+    /* --- Scenario E: drop telemetry saturates and reset clears it ---------- */
+    f_reset();
+    for (i = 0; i < 255; ++i) {
+        (void)f_put((unsigned char)i);
+    }
+    for (i = 0; i < 300; ++i) {
+        (void)f_put(0xA5);
+    }
+    check("fixed: drop telemetry saturates at 255", ring_drop_count == 255);
+    f_reset();
+    check("fixed: reset clears drop telemetry", ring_drop_count == 0);
 
     if (failures == 0) {
         printf("ring_test: PASS\n");

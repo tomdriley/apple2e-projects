@@ -5,6 +5,11 @@
 -- The arrow keys are not in the natural-keyboard table, so we press their input
 -- ports directly. Field names are the Unicode arrows, built from bytes here to
 -- avoid any source-encoding surprises.
+local script_source = debug.getinfo(1, "S").source
+local script_path = script_source:sub(1, 1) == "@" and script_source:sub(2) or script_source
+local script_dir = script_path:match("^(.*)[/\\]") or "."
+dofile(script_dir .. "/ssc_irq.lua")
+
 local LEFT  = string.char(0xE2, 0x86, 0x90) -- U+2190
 local UP    = string.char(0xE2, 0x86, 0x91) -- U+2191
 local RIGHT = string.char(0xE2, 0x86, 0x92) -- U+2192

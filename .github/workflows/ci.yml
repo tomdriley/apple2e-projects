@@ -107,6 +107,14 @@ jobs:
         working-directory: vt100-term-c
         run: make
 
+      - name: IRQ vector, chaining, and Ctrl-Reset lifecycle
+        working-directory: vt100-term-c
+        run: python3 client/irq_lifecycle_test.py
+
+      - name: Interrupt-driven receive during no-pump work
+        working-directory: vt100-term-c
+        run: python3 client/irq_rx_test.py
+
       - name: MAME conformance suite
         working-directory: vt100-term-c
         run: python3 client/conformance/runner.py --target mame -v

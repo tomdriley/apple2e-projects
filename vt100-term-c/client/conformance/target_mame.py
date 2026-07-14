@@ -59,6 +59,8 @@ STATE_SYMS = (
     "cur_col", "cur_row", "scroll_top", "scroll_bot", "cur_attr",
     "app_cursor", "attr_inverse", "saved_screen_col", "saved_screen_row",
     "cursor_visible", "cursor_shown", "cursor_col", "cursor_row", "cursor_saved",
+    "serial_irq_active", "serial_irq_seen", "serial_irq_chained",
+    "ring_drop_count",
 )
 # VICE label line, e.g.  al 001EDE ._cur_col
 _LBL_RE = re.compile(r"^al\s+([0-9A-Fa-f]+)\s+\._(\w+)\s*$")

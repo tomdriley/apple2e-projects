@@ -24,6 +24,11 @@
 -- at a trailing-space column still lines up. Banking mirrors screen_watch.lua:
 -- the 80-col page is split AUX(even)/MAIN(odd) via PAGE2, toggled atomically
 -- from a machine-frame notifier (CPU paused between frames).
+local script_source = debug.getinfo(1, "S").source
+local script_path = script_source:sub(1, 1) == "@" and script_source:sub(2) or script_source
+local script_dir = script_path:match("^(.*)[/\\]") or "."
+dofile(script_dir .. "/../../ssc_irq.lua")
+
 local ROWBASE = {
     0x0400, 0x0480, 0x0500, 0x0580, 0x0600, 0x0680, 0x0700, 0x0780,
     0x0428, 0x04A8, 0x0528, 0x05A8, 0x0628, 0x06A8, 0x0728, 0x07A8,
