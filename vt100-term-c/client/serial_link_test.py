@@ -13,7 +13,7 @@ Covers the alternative-host binding:
     a note on Windows, where PTYs are unavailable.
   * ``docs/PROTOCOL.md`` matches the REAL firmware behavior -- the line settings,
     XON/XOFF thresholds, and query replies it documents are cross-checked against
-    the literals in ``serial.c`` / ``vt100.c`` so the doc can't drift into fiction.
+    ``serial_irq.s`` / ``serial.c`` / ``vt100.c`` so the doc can't drift.
   * the code the doc hands to a host implementer (the CPR regex and the
     ``ESC[?1;0c`` Device Attributes literal) actually parses the firmware's replies.
 
@@ -36,6 +36,7 @@ import serial_link  # noqa: E402
 
 _PROTOCOL = (_ROOT / "docs" / "PROTOCOL.md").read_text(encoding="utf-8")
 _SERIAL_C = (_ROOT / "serial.c").read_text(encoding="utf-8")
+_SERIAL_IRQ = (_ROOT / "serial_irq.s").read_text(encoding="utf-8")
 _VT100_C = (_ROOT / "vt100.c").read_text(encoding="utf-8")
 
 
@@ -88,10 +89,13 @@ def test_ptylink_loopback():
 
 
 def test_protocol_doc_matches_firmware():
-    """The doc's contract must equal the real serial.c / vt100.c behavior."""
+    """The doc's contract must equal the real serial/terminal behavior."""
     # Line: 9600 8N1 via the 6551 control/command bytes.
-    assert "0x1E" in _SERIAL_C and "0x0B" in _SERIAL_C
+    assert "ACIA_CONTROL_9600 = $1e" in _SERIAL_IRQ
+    assert "ACIA_COMMAND_RX_IRQ = $09" in _SERIAL_IRQ
     assert "9600 8N1" in _PROTOCOL
+    assert "0x1E" in _PROTOCOL and "0x09" in _PROTOCOL
+    assert "SW2:6" in _PROTOCOL
     # Flow control: XON/XOFF byte values and ring thresholds, quoted in the doc.
     assert "#define XON       0x11" in _SERIAL_C
     assert "#define XOFF      0x13" in _SERIAL_C

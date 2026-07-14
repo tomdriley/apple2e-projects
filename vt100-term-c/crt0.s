@@ -7,7 +7,7 @@
 ; If start() ever returns, fall back to the DOS warm-start vector.
 
         .export   _exit
-        .import   _start, zerobss
+        .import   _start, _serial_irq_shutdown, zerobss
         .import   __STACKSTART__
         .importzp c_sp
 
@@ -20,4 +20,5 @@ start:                            ; $0800: DOS BRUN jumps here
         sta     c_sp+1
         jsr     zerobss           ; clear BSS (terminal + parser state)
         jsr     _start            ; run the C program
-_exit:  jmp     $03D0             ; if start() returns, fall back to DOS warm-start
+_exit:  jsr     _serial_irq_shutdown
+        jmp     $03D0             ; if start() returns, fall back to DOS warm-start

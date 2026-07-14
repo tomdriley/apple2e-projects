@@ -9,18 +9,15 @@
 #include "serial.h"
 #include "ring.h"
 
-#define ST_RDRF       0x08 /* receive data register full   */
-#define ST_TDRE       0x10 /* transmit data register empty */
-#define CTRL_9600_8N1 0x1E /* 9600 baud, 8 data bits, 1 stop bit */
-#define CMD_NO_PARITY 0x0B /* no parity/echo/IRQ; DTR + RTS asserted */
+#define ST_TDRE 0x10 /* transmit data register empty */
 
 #define XON       0x11
 #define XOFF      0x13
 #define RING_HIGH 192 /* send XOFF once the ring reaches this occupancy    */
 #define RING_LOW  64  /* send XON once the ring drains back to this        */
 
-/* Register pointer: [0]=data, [1]=status, [2]=command, [3]=control.
- * volatile: these are memory-mapped registers, so every access must be real. */
+/* Register base: [0]=data, [1]=status, [2]=command, [3]=control. Runtime
+ * status/data access is serialized in serial_irq.s after IRQ installation. */
 static volatile unsigned char *acia = (volatile unsigned char *)0xC0A8; /* slot 2 */
 static unsigned char           found_slot;
 
@@ -54,9 +51,7 @@ void serial_init(void)
     }
     ring_reset();
     xoff_sent = 0;
-    acia[1]   = 0;             /* status write -> soft reset */
-    acia[3]   = CTRL_9600_8N1; /* control: baud + word length */
-    acia[2]   = CMD_NO_PARITY; /* command: no parity, DTR/RTS on */
+    serial_irq_install((unsigned)acia);
 }
 
 /* Use absolute stores for TDR. An indirect indexed 6502 store dummy-reads the
@@ -91,25 +86,15 @@ static void write_tdr(unsigned char c)
 
 void serial_put(char c)
 {
-    /* Drain before every TDRE check, including the first, so an immediately-ready
-     * transmitter cannot bypass reception of a byte already waiting in RDR. */
-    do {
-        if ((acia[1] & ST_RDRF) != 0 && ring_full() == 0) {
-            ring_push(acia[0]);
-        }
-    } while ((acia[1] & ST_TDRE) == 0);
+    while ((serial_irq_status() & ST_TDRE) == 0)
+        ;
     write_tdr((unsigned char)c);
 }
 
-/* Drain every byte the ACIA holds into the ring buffer, then throttle the host
- * with XOFF if the ring is getting full. Called from the main loop and from
- * inside the screen driver's slow clear/scroll loops, so the 6551's one-byte
- * receive register never overruns while we are busy drawing. */
+/* Keep the safe polling fallback and manage flow control in main context. */
 void serial_pump(void)
 {
-    while ((acia[1] & ST_RDRF) != 0 && ring_full() == 0) {
-        ring_push(acia[0]);
-    }
+    (void)serial_irq_status();
     if (xoff_sent == 0 && ring_count() >= RING_HIGH) {
         serial_put((char)XOFF);
         xoff_sent = 1;

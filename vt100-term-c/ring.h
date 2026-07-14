@@ -9,19 +9,22 @@
  *   empty : head == tail
  *   full  : (unsigned char)(head + 1) == tail     (255 bytes usable)
  *   count : (unsigned char)(head - tail)          (0..255)
- * Because each pointer is written by exactly one side and a single-byte store
- * is atomic on the 6502, this needs no critical section even once RX becomes
- * interrupt-driven (the producer moves into the ISR, the consumer stays in the
- * main loop). It also sidesteps the class of bug where an occupancy counter is
- * too narrow to represent a full ring. */
+ * The assembly producer stores data before publishing head; the assembly
+ * consumer reads data before publishing tail. Each pointer has one writer, and
+ * each byte-sized publication is atomic on the 6502. */
 
 #define RING_SIZE 256 /* array size; head/tail wrap for free, 255 usable */
 
-void          ring_reset(void);           /* clear the ring (make it empty)     */
-unsigned char ring_push(unsigned char b); /* store b; 1 if accepted, 0 if full  */
-int           ring_pop(void);             /* next byte, or -1 if empty          */
-unsigned char ring_count(void);           /* occupancy 0..255                   */
-unsigned char ring_full(void);            /* 1 if full, else 0                  */
-unsigned char ring_empty(void);           /* 1 if empty, else 0                 */
+extern unsigned char          rx_ring[RING_SIZE];
+extern volatile unsigned char r_head;
+extern volatile unsigned char r_tail;
+extern volatile unsigned char ring_drop_count;
+
+void                       ring_reset(void);           /* clear the ring (make it empty)     */
+unsigned char __fastcall__ ring_push(unsigned char b); /* 1 accepted, 0 dropped */
+int                        ring_pop(void);             /* next byte, or -1 if empty          */
+unsigned char              ring_count(void);           /* occupancy 0..255                   */
+unsigned char              ring_full(void);            /* 1 if full, else 0                  */
+unsigned char              ring_empty(void);           /* 1 if empty, else 0                 */
 
 #endif /* RING_H */

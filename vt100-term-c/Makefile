@@ -49,7 +49,8 @@ CSRC     := $(wildcard *.c)
 COBJ     := $(patsubst %.c,$(BUILDDIR)/%.o,$(CSRC))
 CRT0     := $(BUILDDIR)/crt0.o
 MON      := $(BUILDDIR)/monitor.o
-OBJ      := $(CRT0) $(COBJ) $(MON)
+ASMOBJ   := $(BUILDDIR)/ring_io.o $(BUILDDIR)/serial_irq.o
+OBJ      := $(CRT0) $(COBJ) $(MON) $(ASMOBJ)
 BIN      := $(BUILDDIR)/VT100.BIN
 DSK      := $(BUILDDIR)/vt100.dsk
 BASE     := dos33-base.dsk
@@ -58,8 +59,9 @@ BASE     := dos33-base.dsk
 # Super Serial Card in slot 2, its RS-232 port bridged to a null modem whose
 # bit stream is a TCP socket. MAME connects out as a client, so a Python
 # listener (client/) must already be running on this port.
-SERIAL_PORT := 6551
+SERIAL_PORT ?= 6551
 MAME_SERIAL := -sl2 ssc -sl2:ssc:rs232 null_modem -bitb socket.127.0.0.1:$(SERIAL_PORT)
+SSC_IRQ_LUA := $(CURDIR)/client/ssc_irq.lua
 # -aux ext80 supplies the auxiliary RAM the 80-column display needs.
 MAME_VIDEO  := -aux ext80 -skip_gameinfo -video bgfx -bgfx_backend d3d11
 
@@ -75,7 +77,7 @@ $(BUILDDIR):
 # Compile C -> 6502 assembly
 #   -O   optimize
 #   -Cl  static locals (fixed addresses, not the software stack): smaller/faster.
-#        Safe here because nothing is reentrant (no recursion/interrupts).
+#        C remains non-reentrant: the pure-assembly RX ISR never calls C.
 $(BUILDDIR)/%.s: %.c monitor.h | $(BUILDDIR)
 	"$(CC65)" -O -Cl -t none -o $@ $<
 
@@ -100,6 +102,12 @@ $(CRT0): crt0.s | $(BUILDDIR)
 $(MON): monitor.s | $(BUILDDIR)
 	"$(CA65)" -t none -o $(MON) monitor.s
 
+$(BUILDDIR)/ring_io.o: ring_io.s | $(BUILDDIR)
+	"$(CA65)" -t none -o $@ $<
+
+$(BUILDDIR)/serial_irq.o: serial_irq.s | $(BUILDDIR)
+	"$(CA65)" -t none -o $@ $<
+
 # Link -> raw binary placed at $0800; runtime helpers pulled from none.lib
 $(BIN): $(OBJ) vt100.cfg
 	"$(LD65)" -C vt100.cfg -m $(BUILDDIR)/vt100.map -Ln $(BUILDDIR)/vt100.lbl -o $(BIN) $(OBJ) "$(NONELIB)"
@@ -116,13 +124,15 @@ $(DSK): $(BIN) hello.bas
 	"$(AC)" -bas $(DSK) HELLO < hello.bas
 
 # MAME must run from its own directory so the relative rompath resolves
-run: $(DSK)
+run: $(DSK) client/ssc_irq.lua
 	cd "$(dir $(MAME))" && "$(MAME)" apple2e -rompath "$(ROMPATH)" \
-		-flop1 "$(CURDIR)/$(DSK)" $(MAME_SERIAL) $(MAME_VIDEO)
+		-flop1 "$(CURDIR)/$(DSK)" $(MAME_SERIAL) $(MAME_VIDEO) \
+		-autoboot_script "$(SSC_IRQ_LUA)"
 
-debug: $(DSK)
+debug: $(DSK) client/ssc_irq.lua
 	cd "$(dir $(MAME))" && "$(MAME)" apple2e -rompath "$(ROMPATH)" \
-		-flop1 "$(CURDIR)/$(DSK)" $(MAME_SERIAL) $(MAME_VIDEO) -debug
+		-flop1 "$(CURDIR)/$(DSK)" $(MAME_SERIAL) $(MAME_VIDEO) \
+		-autoboot_script "$(SSC_IRQ_LUA)" -debug
 
 clean:
 	rm -rf $(BUILDDIR)
@@ -139,16 +149,20 @@ clean:
 TESTDIR   := tests
 TESTPRG   := $(BUILDDIR)/ring_test.prg
 RINGSIMOBJ := $(BUILDDIR)/ring_sim.o
+RINGIOSIMOBJ := $(BUILDDIR)/ring_io_sim.o
 SIM6502LIB ?= sim6502.lib
 
 $(RINGSIMOBJ): ring.c ring.h | $(BUILDDIR)
 	"$(CC65)" -O -t sim6502 -o $(BUILDDIR)/ring_sim.s ring.c
 	"$(CA65)" -t sim6502 -o $(RINGSIMOBJ) $(BUILDDIR)/ring_sim.s
 
-$(TESTPRG): $(TESTDIR)/ring_test.c ring.h $(RINGSIMOBJ) | $(BUILDDIR)
+$(RINGIOSIMOBJ): ring_io.s | $(BUILDDIR)
+	"$(CA65)" -t sim6502 -o $@ $<
+
+$(TESTPRG): $(TESTDIR)/ring_test.c ring.h $(RINGSIMOBJ) $(RINGIOSIMOBJ) | $(BUILDDIR)
 	"$(CC65)" -O -t sim6502 -o $(BUILDDIR)/ring_test.s $(TESTDIR)/ring_test.c
 	"$(CA65)" -t sim6502 -o $(BUILDDIR)/ring_test.o $(BUILDDIR)/ring_test.s
-	"$(LD65)" -t sim6502 -o $(TESTPRG) $(BUILDDIR)/ring_test.o $(RINGSIMOBJ) "$(SIM6502LIB)"
+	"$(LD65)" -t sim6502 -o $(TESTPRG) $(BUILDDIR)/ring_test.o $(RINGSIMOBJ) $(RINGIOSIMOBJ) "$(SIM6502LIB)"
 
 test: $(TESTPRG)
 	"$(SIM65)" $(TESTPRG)
