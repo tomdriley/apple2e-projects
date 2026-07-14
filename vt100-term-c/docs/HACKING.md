@@ -77,6 +77,10 @@ and strip the overlay from its read-back.
   must preserve X/Y, restore A, avoid cc65 runtime temporaries, and finish with
   `RTI`. Unclaimed IRQs must restore the same entry contract before chaining.
   The serial ISR must not touch `PAGE2`.
+- **Reset is a teardown path.** crt0 saves `SOFTEV`/`PWREDUP` and installs `_exit`
+  as a valid warm-reset target before the serial ISR is armed. Both a normal
+  return and Ctrl-Reset must disable the ACIA IRQ, restore IRQLOC, restore the
+  predecessor reset vector and validity byte, and only then return to DOS.
 - **6502 stores can read first.** `STA (zp),Y` performs a dummy read before its
   write. Never use it for ACIA DATA: the read clears RDRF. The serial ISR uses an
   install-time-patched absolute `STA` for exactly this reason.

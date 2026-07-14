@@ -25,25 +25,31 @@ demonstrates why an unmasked enqueue can collapse the sentinel.
 Use a port that is not occupied by another MAME process:
 
 ```sh
-MAME_PORT=6571 python client/serial_irq_stress.py da --runs 20
-MAME_PORT=6571 python client/serial_irq_stress.py cpr --runs 20
-MAME_PORT=6571 python client/serial_irq_stress.py wrap --runs 20
-MAME_PORT=6571 python client/serial_irq_stress.py flow --runs 5
-MAME_PORT=6571 python client/serial_irq_stress.py mixed --runs 5
+MAME_PORT=6572 python client/serial_irq_stress.py da --runs 20
+MAME_PORT=6572 python client/serial_irq_stress.py cpr --runs 20
+MAME_PORT=6572 python client/serial_irq_stress.py wrap --runs 20
+MAME_PORT=6572 python client/serial_irq_stress.py flow --runs 5
+MAME_PORT=6572 python client/serial_irq_stress.py mixed --runs 5
+MAME_PORT=6572 python client/serial_irq_stress.py lifecycle --runs 1
 ```
 
 `da` sends the exact DA-following-private-CSI reproducer, `cpr` sends two
 back-to-back cursor reports, and `wrap` drives the real WSL/ConPTY shell path.
 `flow` enables MAME null-modem XON/XOFF and forces repeated high/low-water
 crossings during slow clears. `mixed` adds DA, CPR, ENQ, ordinary rendering, and
-probe-injected keyboard TX to that flow-controlled stream.
+probe-injected keyboard TX to that flow-controlled stream. `lifecycle` injects an
+unclaimed Monitor-contract IRQ and verifies its frame, predecessor registers,
+stack, and post-RTI state. On a separate fresh boot it presses MAME's actual
+Control+RESET inputs and requires ACIA interrupt disable plus IRQLOC and
+`SOFTEV` restoration.
 
 The diagnostic probe reads linker-derived ring/state addresses and records every
-RX-ring write, ACIA status/data/command access, vector update, and PAGE2 state at
-publication. A trial fails on any byte mismatch, unexpected command transition,
-ACIA error, unpaired XOFF/XON, non-drained ring, inactive IRQ vector, screen or
-wire mismatch, or missing AUX-selected IRQ overlap. These tests require the same
-Apple IIe and SSC ROMs as the conformance runner.
+RX-ring write, ACIA status/data/command access, vector update, linked TX-store
+opcode, reset vector, and PAGE2 state at publication. A trial fails on any byte
+mismatch, unexpected command transition, ACIA error, unpaired XOFF/XON,
+non-drained ring, inactive IRQ/reset vector, screen or wire mismatch, broken
+foreign-IRQ chaining/reset teardown, or missing AUX-selected IRQ overlap. These
+tests require the same Apple IIe and SSC ROMs as the conformance runner.
 
 ## Continuous integration & reproducible toolchain
 

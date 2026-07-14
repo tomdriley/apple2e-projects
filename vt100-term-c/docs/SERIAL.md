@@ -149,21 +149,26 @@ The rings are in BSS above `$0800`, outside the `$0400-$07FF` text window, so th
 handler neither reads nor changes `PAGE2`. If it interrupts `cell_put()` while
 AUX is selected, the render resumes with the same bank selected.
 
-If `start()` returns, crt0 calls `serial_isr_remove()` before the DOS warm start.
-Teardown masks CPU IRQs, deasserts DTR with command `0x0A`, reads status to clear
-any already-latched modem IRQ, restores the predecessor vector, and then enables
-CPU IRQs. Interactive Ctrl-Reset does not use this normal `_exit` path; a
-SOFTEV/PWREDUP reset hook is intentionally deferred.
+After clearing BSS, crt0 saves the predecessor `SOFTEV` vector and `PWREDUP`
+validity byte, then publishes `_exit` as a valid warm-reset target before the
+serial ISR can be armed. A normal return and interactive Ctrl-Reset therefore use
+the same teardown. It masks CPU IRQs, deasserts DTR with command `0x0A`, reads
+status to clear any already-latched modem IRQ, restores the predecessor IRQLOC,
+then restores `SOFTEV`/`PWREDUP` and enters the DOS warm start.
 
 ## Race-stress coverage
 
 `client/serial_irq_stress.py` boots fresh firmware for exact DA, back-to-back
-CPR, shell-wrap, flow-control, and mixed-duplex trials. Its Lua taps derive RAM
-addresses from `build/vt100.lbl` and verify the exact bytes published to the RX
-ring, wire replies, command transitions, ring drain, ACIA error bits, IRQLOC,
-XON/XOFF pairs, and PAGE2 during each RX publication. The mixed mode also
-injects keyboard bytes while DA, CPR, ENQ, rendering, and repeated flow-control
-crossings are active.
+CPR, shell-wrap, flow-control, mixed-duplex, and lifecycle trials. Its Lua taps
+derive RAM addresses from `build/vt100.lbl` and verify the exact bytes published
+to the RX ring, wire replies, command transitions, ring drain, ACIA error bits,
+IRQLOC, the reset vector, XON/XOFF pairs, the linked absolute TX opcode, and
+PAGE2 during each RX publication. The mixed mode also injects keyboard bytes
+while DA, CPR, ENQ, rendering, and repeated flow-control crossings are active.
+The lifecycle mode synthesizes an unclaimed Monitor-contract IRQ to verify
+predecessor chaining plus exact register, stack, frame, and RTI preservation.
+On a separate fresh boot it then presses MAME's real Control+RESET inputs and
+checks ACIA, IRQLOC, and `SOFTEV` teardown.
 
 ## The retired receive-overrun class
 
